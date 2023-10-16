@@ -38,11 +38,11 @@ contract VaultMaster is Ownable {
         _;
     }
 
-    constructor(address greatDAO_, address gpbCoin_, address gbpUsdPriceFeed_, uint8 gbpUsdPriceFeedDecimals_)
+    constructor(address greatDAO_, address gbpCoin_, address gbpUsdPriceFeed_, uint8 gbpUsdPriceFeedDecimals_)
         Ownable(greatDAO_)
         nonZeroAddress(greatDAO_)
     {
-        _gbpCoin = GBPCoin(gpbCoin_);
+        _gbpCoin = GBPCoin(gbpCoin_);
         _gbpUsdPriceFeed = USDPriceFeed({feed: gbpUsdPriceFeed_, decimals: gbpUsdPriceFeedDecimals_});
     }
 
@@ -90,5 +90,9 @@ contract VaultMaster is Ownable {
 
     function gbpUsdPriceFeed() external view returns (USDPriceFeed memory) {
         return _gbpUsdPriceFeed;
+    }
+
+    function gbpCoin() external view returns (GBPCoin) {
+        return _gbpCoin;
     }
 }
