@@ -66,21 +66,21 @@ contract GreatVault is Ownable, Pausable {
     }
 
     constructor(
-        address owner,
-        address collateral,
-        address usdPriceFeed,
-        uint8 priceFeedDecimals,
-        uint8 liquidationSpread,
-        uint8 liquidationThreshold,
-        uint8 closeFactor
-    ) Ownable(owner) {
+        address owner_,
+        address collateral_,
+        address usdPriceFeed_,
+        uint8 priceFeedDecimals_,
+        uint8 liquidationSpread_,
+        uint8 liquidationThreshold_,
+        uint8 closeFactor_
+    ) Ownable(owner_) {
         _master = VaultMaster(msg.sender);
-        _collateral = IERC20(collateral);
-        _collateralUsdPriceFeed = USDPriceFeed({feed: usdPriceFeed, decimals: priceFeedDecimals});
+        _collateral = IERC20(collateral_);
+        _collateralUsdPriceFeed = USDPriceFeed({feed: usdPriceFeed_, decimals: priceFeedDecimals_});
 
-        _liquidationSpread = liquidationSpread;
-        _liquidationThreshold = liquidationThreshold;
-        _closeFactor = closeFactor;
+        _liquidationSpread = liquidationSpread_;
+        _liquidationThreshold = liquidationThreshold_;
+        _closeFactor = closeFactor_;
     }
 
     function depositCollateralAndMintGBPC(address receiver, uint256 collateralAmount, uint256 gbpcAmount) external {
@@ -94,12 +94,11 @@ contract GreatVault is Ownable, Pausable {
         nonZeroAddress(receiver)
         whenNotPaused
     {
-        IERC20 collateral = _collateral;
         _collateralBalances[receiver] += amount;
 
         emit CollateralDeposited(msg.sender, receiver, amount);
 
-        collateral.safeTransferFrom(msg.sender, address(this), amount);
+        _collateral.safeTransferFrom(msg.sender, address(this), amount);
     }
 
     function mintGBPC(address receiver, uint256 amount)
@@ -171,9 +170,9 @@ contract GreatVault is Ownable, Pausable {
         nonZeroAmount(amount)
         whenNotPaused
     {
-        uint256 collateralBalance = _collateralBalances[from];
-        if (amount > collateralBalance) {
-            revert GV__InsufficientCollateral(collateralBalance);
+        uint256 collateralBalance_ = _collateralBalances[from];
+        if (amount > collateralBalance_) {
+            revert GV__InsufficientCollateral(collateralBalance_);
         }
 
         _collateralBalances[from] -= amount;
@@ -204,23 +203,21 @@ contract GreatVault is Ownable, Pausable {
     // TODO: Possible 0 denominators, zero amounts and addresses, whenNotPaused
 
     function _collateralToGBP(uint256 amount) private view returns (uint256 gbpPrice) {
-        USDPriceFeed memory collateralUsdPriceFeed = _collateralUsdPriceFeed;
+        USDPriceFeed memory collateralUsdPriceFeed_ = _collateralUsdPriceFeed;
         USDPriceFeed memory gbpUsdPriceFeed = _master.gbpUsdPriceFeed();
         uint8 collateralDecimals = IERC20Metadata(address(_collateral)).decimals();
 
-        (, int256 collateralToUsdAnswer,,,) = AggregatorV3Interface(collateralUsdPriceFeed.feed).latestRoundData(); //
+        (, int256 collateralToUsdAnswer,,,) = AggregatorV3Interface(collateralUsdPriceFeed_.feed).latestRoundData(); //
         (, int256 gbpToUsdAnswer,,,) = AggregatorV3Interface(gbpUsdPriceFeed.feed).latestRoundData();
 
-        uint256 assetUsdPrice = uint256(collateralToUsdAnswer) * 10 ** (GBPC_DECIMALS - collateralUsdPriceFeed.decimals);
+        uint256 assetUsdPrice = uint256(collateralToUsdAnswer) * 10 ** (GBPC_DECIMALS - collateralUsdPriceFeed_.decimals);
         uint256 gbpUsdPrice = uint256(gbpToUsdAnswer) * 10 ** (GBPC_DECIMALS - gbpUsdPriceFeed.decimals);
 
         gbpPrice = assetUsdPrice.mulDiv(amount * 10 ** (GBPC_DECIMALS - collateralDecimals), gbpUsdPrice);
     }
 
     function _borrowingCapacity(address account) private view returns (uint256 borrowingCapacity) {
-        uint256 collateralBalance = _collateralBalances[account];
-        uint256 collateralGbpValue = _collateralToGBP(collateralBalance);
-
+        uint256 collateralGbpValue = _collateralToGBP(_collateralBalances[account]);
         borrowingCapacity = collateralGbpValue.mulDiv(_liquidationThreshold, ONE_HUNDRED_PERCENT);
     }
 
@@ -241,5 +238,59 @@ contract GreatVault is Ownable, Pausable {
 
     function unpause() public onlyOwner {
         _unpause();
+    }
+
+    function setLiquidationSpread(uint8 newSpread) external nonZeroAmount(newSpread) onlyOwner whenNotPaused {
+        _liquidationSpread = newSpread;
+    }
+
+    function setLiquidationThreshold(uint8 newThreshold) external nonZeroAmount(newThreshold) onlyOwner whenNotPaused {
+        _liquidationThreshold = newThreshold;
+    }
+
+    function setCloseFactor(uint8 newFactor) external nonZeroAmount(newFactor) onlyOwner whenNotPaused {
+        _closeFactor = newFactor;
+    }
+
+    function setCollateralUsdPriceFeed(address newFeed, uint8 newDecimals)
+        external
+        nonZeroAddress(newFeed)
+        onlyOwner
+        whenNotPaused
+    {
+        _collateralUsdPriceFeed.feed = newFeed;
+        _collateralUsdPriceFeed.decimals = newDecimals;
+    }
+
+    function liquidationSpread() external view returns (uint8) {
+        return _liquidationSpread;
+    }
+
+    function liquidationThreshold() external view returns (uint8) {
+        return _liquidationThreshold;
+    }
+
+    function closeFactor() external view returns (uint8) {
+        return _closeFactor;
+    }
+
+    function collateralBalance(address account) external view returns (uint256) {
+        return _collateralBalances[account];
+    }
+
+    function gbpcMinted(address account) external view returns (uint256) {
+        return _gbpcMinted[account];
+    }
+
+    function collateral() external view returns (address) {
+        return address(_collateral);
+    }
+
+    function vaultMaster() external view returns (address) {
+        return address(_master);
+    }
+
+    function collateralUsdPriceFeed() external view returns (address, uint256) {
+        return (_collateralUsdPriceFeed.feed, _collateralUsdPriceFeed.decimals);
     }
 }
