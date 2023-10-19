@@ -92,7 +92,7 @@ contract VaultMaster is Ownable {
         return _gbpUsdPriceFeed;
     }
 
-    function gbpCoin() external view returns (GBPCoin) {
-        return _gbpCoin;
+    function gbpCoin() external view returns (address) {
+        return address(_gbpCoin);
     }
 }
