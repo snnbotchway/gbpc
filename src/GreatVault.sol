@@ -72,11 +72,16 @@ contract GreatVault is Ownable, Pausable {
         address collateral_,
         address usdPriceFeed_,
         uint8 priceFeedDecimals_,
-        uint8 liquidationSpread_,
         uint8 liquidationThreshold_,
+        uint8 liquidationSpread_,
         uint8 closeFactor_
     )
         Ownable(owner_)
+        nonZeroAddress(collateral_)
+        nonZeroAddress(usdPriceFeed_)
+        nonZeroAmount(liquidationSpread_)
+        nonZeroAmount(liquidationThreshold_)
+        nonZeroAmount(closeFactor_)
         notMoreThan100(liquidationSpread_)
         notMoreThan100(liquidationThreshold_)
         notMoreThan100(closeFactor_)
