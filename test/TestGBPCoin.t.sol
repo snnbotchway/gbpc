@@ -5,20 +5,43 @@ import {AggregatorV3Interface} from "chainlink/contracts/src/v0.8/interfaces/Agg
 import {console2} from "forge-std/console2.sol";
 import {Test, console2} from "forge-std/Test.sol";
 import {IAccessControl} from "openzeppelin-contracts/contracts/access/IAccessControl.sol";
+import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
 import {DeployGBPSystem} from "script/DeployGBPSystem.s.sol";
 import {GBPCoin} from "src/GBPCoin.sol";
-import {VaultMaster} from "src/VaultMaster.sol";
+import {GreatDAO} from "src/dao/GreatDAO.sol";
+import {GreatCoin} from "src/dao/GreatCoin.sol";
+import {GreatTimeLock} from "src/dao/GreatTimeLock.sol";
+import {GreatVault} from "src/GreatVault.sol";
 import {HelperConfig} from "script/HelperConfig.s.sol";
+import {VaultMaster} from "src/VaultMaster.sol";
 
 contract TestGBPCoin is Test {
-    DeployGBPSystem deployer;
-    GBPCoin gbpCoin;
-    VaultMaster vaultMaster;
+    GBPCoin public gbpCoin;
+    GreatCoin public greatCoin;
+    GreatDAO public greatDAO;
+    GreatTimeLock public timelock;
+    GreatVault public greatVault;
+    VaultMaster public vaultMaster;
+    HelperConfig public config;
+    DeployGBPSystem public deployer;
+
+    uint8 public constant LIQUIDATION_THRESHOLD = 80;
+    uint8 public constant LIQUIDATION_SPREAD = 10;
+    uint8 public constant CLOSE_FACTOR = 50;
 
     function setUp() public {
         deployer = new DeployGBPSystem();
-        (gbpCoin, vaultMaster) = deployer.run();
+        (greatDAO, timelock, vaultMaster, gbpCoin, greatCoin, config) = deployer.run();
+
+        (,,, address wEth, address wEthUsdPriceFeed, uint8 wEthUsdPriceFeedDecimals) = config.activeNetworkConfig();
+
+        vm.prank(address(greatDAO));
+        vaultMaster.deployVault(
+            wEth, wEthUsdPriceFeed, wEthUsdPriceFeedDecimals, LIQUIDATION_THRESHOLD, LIQUIDATION_SPREAD, CLOSE_FACTOR
+        );
+
+        greatVault = GreatVault(vaultMaster.collateralVault(wEth));
     }
 
     /* ========================= DEPLOY ========================= */
@@ -52,7 +75,7 @@ contract TestGBPCoin is Test {
         vm.assume(to != address(0));
         vm.assume(amount != 0);
 
-        vm.prank(address(vaultMaster));
+        vm.prank(address(greatVault));
         gbpCoin.mint(to, amount);
 
         assertEq(gbpCoin.balanceOf(to), amount);
@@ -73,13 +96,15 @@ contract TestGBPCoin is Test {
         vm.assume(prevBal >= amount);
         vm.assume(amount != 0);
 
-        vm.prank(address(vaultMaster));
-        gbpCoin.mint(address(vaultMaster), prevBal);
+        address vault = address(greatVault);
 
-        vm.prank(address(vaultMaster));
+        vm.prank(vault);
+        gbpCoin.mint(vault, prevBal);
+
+        vm.prank(vault);
         gbpCoin.burn(amount);
 
-        assertEq(gbpCoin.balanceOf(address(vaultMaster)), prevBal - amount);
+        assertEq(gbpCoin.balanceOf(vault), prevBal - amount);
     }
 
     /* ========================= BURN FROM ========================= */
@@ -98,13 +123,15 @@ contract TestGBPCoin is Test {
         vm.assume(amount != 0);
         vm.assume(from != address(0));
 
-        vm.prank(address(vaultMaster));
+        address vault = address(greatVault);
+
+        vm.prank(vault);
         gbpCoin.mint(from, prevBal);
 
         vm.prank(from);
-        gbpCoin.approve(address(vaultMaster), amount);
+        gbpCoin.approve(vault, amount);
 
-        vm.prank(address(vaultMaster));
+        vm.prank(vault);
         gbpCoin.burnFrom(from, amount);
 
         assertEq(gbpCoin.balanceOf(from), prevBal - amount);
