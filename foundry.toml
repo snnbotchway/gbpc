@@ -9,7 +9,7 @@ optimizer_runs = 200
 [fmt]
 line_length = 125
 
-remappings = ["chainlink/=lib/chainlink", "src/=src/", "script/=script/", "utils/=src/utils/"]
+remappings = ["chainlink/=lib/chainlink", "src/=src/", "script/=script/"]
 
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
