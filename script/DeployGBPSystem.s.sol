@@ -18,10 +18,17 @@ contract DeployGBPSystem is Script {
 
     function run()
         external
-        returns (GreatDAO greatDAO, GreatTimeLock timelock, VaultMaster vaultMaster, GBPCoin gbpCoin, GreatCoin greatCoin)
+        returns (
+            GreatDAO greatDAO,
+            GreatTimeLock timelock,
+            VaultMaster vaultMaster,
+            GBPCoin gbpCoin,
+            GreatCoin greatCoin,
+            HelperConfig config
+        )
     {
-        HelperConfig config = new HelperConfig();
-        (uint256 deployerKey, address gbpUsdPriceFeed, uint8 gbpUsdPriceFeedDecimals) = config.activeNetworkConfig();
+        config = new HelperConfig();
+        (uint256 deployerKey, address gbpUsdPriceFeed, uint8 gbpUsdPriceFeedDecimals,,,) = config.activeNetworkConfig();
         address deployer = vm.createWallet(deployerKey).addr;
 
         vm.startBroadcast(deployerKey);
