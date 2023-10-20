@@ -19,8 +19,10 @@ import {USDPriceFeed} from "./utils//Structs.sol";
 contract VaultMaster is Ownable {
     error GV__InvalidAmount(uint256 amount);
     error GV__InvalidAddress(address address_);
-    error GV__InvalidLiquidationSpread(uint8 percentage);
+    error GV__PercentageCannotBeMoreThan100(uint8 percentage);
     error GC__DuplicateCollateral(address collateral);
+    error GV__IncompatibleCollateral();
+    error GV__IncompatiblePriceFeed();
 
     USDPriceFeed private _gbpUsdPriceFeed;
     mapping(address collateral => address vault) private _vaults;
@@ -42,6 +44,8 @@ contract VaultMaster is Ownable {
         Ownable(greatDAO_)
         nonZeroAddress(greatDAO_)
     {
+        if (IERC20Metadata(_gbpCoin).decimals() < gbpUsdPriceFeedDecimals_) revert GV__IncompatiblePriceFeed();
+
         _gbpCoin = GBPCoin(gbpCoin_);
         _gbpUsdPriceFeed = USDPriceFeed({feed: gbpUsdPriceFeed_, decimals: gbpUsdPriceFeedDecimals_});
     }
@@ -70,11 +74,11 @@ contract VaultMaster is Ownable {
         nonZeroAmount(closeFactor)
     {
         if (_vaults[collateral] != address(0)) revert GC__DuplicateCollateral(collateral);
-        if (liquidationSpread > 100) revert GV__InvalidLiquidationSpread(liquidationSpread);
 
-        // TODO: Review
-        // if (IERC20Metadata(_gbpCoin).decimals() < IERC20Metadata(collateral).decimals()) revert GV_IncompatibleCollateral();
-        // if (IERC20Metadata(_gbpCoin).decimals() < priceFeedDecimals) revert GV_IncompatiblePriceFeed();
+        /// @custom:audit Collateral to GBPC conversion in the vault assumes the GBPC decimals are greater than or equal to
+        /// the Collateral's decimals and the Pricefeeds' decimals.
+        if (IERC20Metadata(_gbpCoin).decimals() < IERC20Metadata(collateral).decimals()) revert GV__IncompatibleCollateral();
+        if (IERC20Metadata(_gbpCoin).decimals() < priceFeedDecimals) revert GV__IncompatiblePriceFeed();
 
         address vaultOwner = owner(); // The DAO will own the vault as well.
 
@@ -82,10 +86,10 @@ contract VaultMaster is Ownable {
         new GreatVault(vaultOwner, collateral, usdPriceFeed, priceFeedDecimals, liquidationSpread, liquidationThreshold, closeFactor);
         _vaults[collateral] = address(vault);
 
+        emit VaultDeployed(collateral, address(vault), usdPriceFeed, liquidationSpread);
+
         bytes32 minterRole = _gbpCoin.MINTER_ROLE();
         _gbpCoin.grantRole(minterRole, address(vault));
-
-        emit VaultDeployed(collateral, address(vault), usdPriceFeed, liquidationSpread);
     }
 
     function gbpUsdPriceFeed() external view returns (USDPriceFeed memory) {
