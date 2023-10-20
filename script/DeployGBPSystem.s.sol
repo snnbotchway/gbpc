@@ -4,25 +4,35 @@ pragma solidity ^0.8.20;
 import {Script, console2} from "forge-std/Script.sol";
 
 import {GBPCoin} from "src/GBPCoin.sol";
-import {VaultMaster} from "src/VaultMaster.sol";
+import {GreatDAO} from "src/dao/GreatDAO.sol";
+import {GreatCoin} from "src/dao/GreatCoin.sol";
+import {GreatTimeLock} from "src/dao/GreatTimeLock.sol";
 import {HelperConfig} from "./HelperConfig.s.sol";
+import {VaultMaster} from "src/VaultMaster.sol";
 
 contract DeployGBPSystem is Script {
-    function run() external returns (GBPCoin gbpCoin, VaultMaster vaultMaster) {
+    uint256 public constant MIN_DELAY = 1 hours;
+    address public constant TIMELOCK_ADMIN = address(0);
+    address[] proposers;
+    address[] executors;
+
+    function run()
+        external
+        returns (GreatDAO greatDAO, GreatTimeLock timelock, VaultMaster vaultMaster, GBPCoin gbpCoin, GreatCoin greatCoin)
+    {
         HelperConfig config = new HelperConfig();
         (uint256 deployerKey, address gbpUsdPriceFeed, uint8 gbpUsdPriceFeedDecimals) = config.activeNetworkConfig();
-
         address deployer = vm.createWallet(deployerKey).addr;
 
         vm.startBroadcast(deployerKey);
         gbpCoin = new GBPCoin(deployer);
-        vaultMaster = new VaultMaster(makeAddr("temp dao addr"), address(gbpCoin), gbpUsdPriceFeed, gbpUsdPriceFeedDecimals);
+        greatCoin = new GreatCoin(deployer);
+        timelock = new GreatTimeLock(MIN_DELAY, proposers, executors, TIMELOCK_ADMIN);
+        greatDAO = new GreatDAO(greatCoin, timelock);
+        vaultMaster = new VaultMaster(address(greatDAO), address(gbpCoin), gbpUsdPriceFeed, gbpUsdPriceFeedDecimals);
 
         bytes32 adminRole = gbpCoin.DEFAULT_ADMIN_ROLE();
-        bytes32 minterRole = gbpCoin.MINTER_ROLE();
-
         gbpCoin.grantRole(adminRole, address(vaultMaster));
-        gbpCoin.grantRole(minterRole, address(vaultMaster)); // TODO: Vault Master should not be a minter
         gbpCoin.renounceRole(adminRole, deployer);
         vm.stopBroadcast();
     }
