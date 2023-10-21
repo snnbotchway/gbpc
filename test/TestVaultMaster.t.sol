@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: BSL 1.1
-pragma solidity ^0.8.20;
+pragma solidity 0.8.21;
 
 import {AggregatorV3Interface} from "chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 import {Test, console2} from "forge-std/Test.sol";
@@ -25,11 +25,11 @@ contract TestVaultMaster is Test {
     HelperConfig public config;
     DeployGBPSystem public deployer;
 
-    address wEth;
-    address wEthUsdPriceFeed;
-    uint8 wEthUsdPriceFeedDecimals;
-    address gbpUsdPriceFeed;
-    uint8 gbpUsdPriceFeedDecimals;
+    address public wEth;
+    address public wEthUsdPriceFeed;
+    uint8 public wEthUsdPriceFeedDecimals;
+    address public gbpUsdPriceFeed;
+    uint8 public gbpUsdPriceFeedDecimals;
 
     uint8 public constant LIQUIDATION_THRESHOLD = 80;
     uint8 public constant LIQUIDATION_SPREAD = 10;
