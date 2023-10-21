@@ -11,7 +11,7 @@ import {HelperConfig} from "./HelperConfig.s.sol";
 import {VaultMaster} from "src/VaultMaster.sol";
 
 contract DeployGBPSystem is Script {
-    uint256 public constant MIN_DELAY = 1 hours;
+    uint256 public constant MIN_DELAY = 1 days;
     address public constant TIMELOCK_ADMIN = address(0);
     address[] proposers;
     address[] executors;
@@ -36,7 +36,7 @@ contract DeployGBPSystem is Script {
         greatCoin = new GreatCoin(deployer);
         timelock = new GreatTimeLock(MIN_DELAY, proposers, executors, TIMELOCK_ADMIN);
         greatDAO = new GreatDAO(greatCoin, timelock);
-        vaultMaster = new VaultMaster(address(greatDAO), address(gbpCoin), gbpUsdPriceFeed, gbpUsdPriceFeedDecimals);
+        vaultMaster = new VaultMaster(address(timelock), address(gbpCoin), gbpUsdPriceFeed, gbpUsdPriceFeedDecimals);
 
         bytes32 adminRole = gbpCoin.DEFAULT_ADMIN_ROLE();
         gbpCoin.grantRole(adminRole, address(vaultMaster));
