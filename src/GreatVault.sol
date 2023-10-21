@@ -272,14 +272,16 @@ contract GreatVault is Ownable {
         return value;
     }
 
-    function previewDepositCollateral(uint256 collateralAmount) external view returns (uint256 maxBorrow) {
+    function previewDepositCollateral(uint256 collateralAmount) external view returns (uint256 maxMintableGbpc) {
         uint256 collateralGbpValue = _collateralToGbp(collateralAmount);
-        maxBorrow = collateralGbpValue.mulDiv(_liquidationThreshold, ONE_HUNDRED_PERCENT);
+        maxMintableGbpc = collateralGbpValue.mulDiv(_liquidationThreshold, ONE_HUNDRED_PERCENT);
     }
 
-    function previewMintGBPC(uint256 gbpcAmount) external view returns (uint256 collateralAmount) {
+    function previewMintGBPC(uint256 gbpcAmount) external view returns (uint256 minCollateralDeposit) {
+        if (gbpcAmount == 0) return 0;
+
         uint256 collateralGbpValue = gbpcAmount.mulDiv(ONE_HUNDRED_PERCENT, _liquidationThreshold);
-        collateralAmount = _gbpToCollateral(collateralGbpValue);
+        minCollateralDeposit = _gbpToCollateral(collateralGbpValue) + 1;
     }
 
     function liquidationSpread() external view returns (uint8) {

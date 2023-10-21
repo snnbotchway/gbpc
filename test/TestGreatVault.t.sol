@@ -75,10 +75,10 @@ contract TestGreatVault is Test {
         vm.stopPrank();
 
         // Get LIQUIDATOR alot of GBPC for liquidations.
-        uint256 maxBorrow = greatVault.previewDepositCollateral(ALOT);
+        uint256 maxMintableGbpc = greatVault.previewDepositCollateral(ALOT);
         vm.startPrank(LIQUIDATOR);
         wEth.approve(address(greatVault), ALOT);
-        greatVault.depositCollateralAndMintGBPC(ALOT, maxBorrow);
+        greatVault.depositCollateralAndMintGBPC(ALOT, maxMintableGbpc);
         gbpCoin.approve(address(greatVault), ALOT);
         vm.stopPrank();
     }
@@ -119,20 +119,20 @@ contract TestGreatVault is Test {
     /* ========================= DEPOSIT COLLATERAL AND MINT GBPC ========================= */
 
     function testRevertsIfHealthFactorWillBreak() public {
-        uint256 maxBorrow = greatVault.previewDepositCollateral(COLLATERAL_AMOUNT);
+        uint256 maxMintableGbpc = greatVault.previewDepositCollateral(COLLATERAL_AMOUNT);
 
         vm.expectRevert(GreatVault.GV__HealthFactorBroken.selector);
         vm.prank(USER);
-        greatVault.depositCollateralAndMintGBPC(COLLATERAL_AMOUNT, maxBorrow + 1);
+        greatVault.depositCollateralAndMintGBPC(COLLATERAL_AMOUNT, maxMintableGbpc + 1);
     }
 
     function testDepositsCollateralForTheCaller() public {
-        uint256 maxBorrow = greatVault.previewDepositCollateral(COLLATERAL_AMOUNT);
+        uint256 maxMintableGbpc = greatVault.previewDepositCollateral(COLLATERAL_AMOUNT);
         uint256 initialVaultWethBal = wEth.balanceOf(address(greatVault));
         uint256 initialUserWethBal = wEth.balanceOf(address(USER));
 
         vm.prank(USER);
-        greatVault.depositCollateralAndMintGBPC(COLLATERAL_AMOUNT, maxBorrow);
+        greatVault.depositCollateralAndMintGBPC(COLLATERAL_AMOUNT, maxMintableGbpc);
 
         uint256 finalVaultWethBal = wEth.balanceOf(address(greatVault));
         uint256 finalUserWethBal = wEth.balanceOf(address(USER));
@@ -142,27 +142,27 @@ contract TestGreatVault is Test {
     }
 
     function testMintsGbpcToTheCaller() public {
-        uint256 maxBorrow = greatVault.previewDepositCollateral(COLLATERAL_AMOUNT);
+        uint256 maxMintableGbpc = greatVault.previewDepositCollateral(COLLATERAL_AMOUNT);
 
         vm.prank(USER);
-        greatVault.depositCollateralAndMintGBPC(COLLATERAL_AMOUNT, maxBorrow);
+        greatVault.depositCollateralAndMintGBPC(COLLATERAL_AMOUNT, maxMintableGbpc);
 
-        assertEq(gbpCoin.balanceOf(USER), maxBorrow);
-        assertEq(greatVault.gbpcMinted(USER), maxBorrow);
+        assertEq(gbpCoin.balanceOf(USER), maxMintableGbpc);
+        assertEq(greatVault.gbpcMinted(USER), maxMintableGbpc);
     }
 
     /* ========================= BURN GBPC AND WITHDRAW COLLATERAL ========================= */
 
     function testItRevertsIfHealthFactorWillBreak() public {
-        uint256 maxBorrow = greatVault.previewDepositCollateral(COLLATERAL_AMOUNT);
+        uint256 maxMintableGbpc = greatVault.previewDepositCollateral(COLLATERAL_AMOUNT);
 
         vm.prank(USER);
-        greatVault.depositCollateralAndMintGBPC(COLLATERAL_AMOUNT, maxBorrow);
+        greatVault.depositCollateralAndMintGBPC(COLLATERAL_AMOUNT, maxMintableGbpc);
 
         // Withdrawing and burning these exact amounts should not revert.
         // Withdrawing any more or burning any less should revert.
         uint256 wEthToWithdraw = COLLATERAL_AMOUNT / 2;
-        uint256 gbpcToBurn = (maxBorrow / 2) + 1;
+        uint256 gbpcToBurn = (maxMintableGbpc / 2) + 1;
 
         vm.startPrank(USER);
 
@@ -181,13 +181,13 @@ contract TestGreatVault is Test {
     }
 
     function testBurnsGbpcFromTheCaller() public {
-        uint256 maxBorrow = greatVault.previewDepositCollateral(COLLATERAL_AMOUNT);
+        uint256 maxMintableGbpc = greatVault.previewDepositCollateral(COLLATERAL_AMOUNT);
 
         vm.prank(USER);
-        greatVault.depositCollateralAndMintGBPC(COLLATERAL_AMOUNT, maxBorrow);
+        greatVault.depositCollateralAndMintGBPC(COLLATERAL_AMOUNT, maxMintableGbpc);
 
         uint256 wEthToWithdraw = COLLATERAL_AMOUNT / 2;
-        uint256 gbpcToBurn = (maxBorrow / 2) + 1;
+        uint256 gbpcToBurn = (maxMintableGbpc / 2) + 1;
         uint256 initialUserGbpcBal = gbpCoin.balanceOf(USER);
         uint256 initialUserGbpcMinted = greatVault.gbpcMinted(USER);
 
@@ -201,13 +201,13 @@ contract TestGreatVault is Test {
     }
 
     function testWithdrawsCollateralToTheCaller() public {
-        uint256 maxBorrow = greatVault.previewDepositCollateral(COLLATERAL_AMOUNT);
+        uint256 maxMintableGbpc = greatVault.previewDepositCollateral(COLLATERAL_AMOUNT);
 
         vm.prank(USER);
-        greatVault.depositCollateralAndMintGBPC(COLLATERAL_AMOUNT, maxBorrow);
+        greatVault.depositCollateralAndMintGBPC(COLLATERAL_AMOUNT, maxMintableGbpc);
 
         uint256 wEthToWithdraw = COLLATERAL_AMOUNT / 2;
-        uint256 gbpcToBurn = (maxBorrow / 2) + 1;
+        uint256 gbpcToBurn = (maxMintableGbpc / 2) + 1;
         uint256 initialUserWethBal = wEth.balanceOf(USER);
         uint256 initialUserCollateralBal = greatVault.collateralBalance(USER);
 
@@ -223,10 +223,10 @@ contract TestGreatVault is Test {
     /* ========================= WITHDRAW COLLATERAL ========================= */
 
     function testWillRevertIfHealthFactorBreaks() public {
-        uint256 maxBorrow = greatVault.previewDepositCollateral(COLLATERAL_AMOUNT);
+        uint256 maxMintableGbpc = greatVault.previewDepositCollateral(COLLATERAL_AMOUNT);
 
         vm.startPrank(USER);
-        greatVault.depositCollateralAndMintGBPC(COLLATERAL_AMOUNT, maxBorrow);
+        greatVault.depositCollateralAndMintGBPC(COLLATERAL_AMOUNT, maxMintableGbpc);
 
         // We borrowed the max, any further withdraw of collateral should break the health factor
         vm.expectRevert(GreatVault.GV__HealthFactorBroken.selector);
@@ -235,8 +235,8 @@ contract TestGreatVault is Test {
     }
 
     function testItWithdrawsCollateralToTheCaller() public {
-        uint256 maxBorrow = greatVault.previewDepositCollateral(COLLATERAL_AMOUNT);
-        uint256 amountToBorrow = maxBorrow / 2;
+        uint256 maxMintableGbpc = greatVault.previewDepositCollateral(COLLATERAL_AMOUNT);
+        uint256 amountToBorrow = maxMintableGbpc / 2;
         uint256 wEthToWithdraw = COLLATERAL_AMOUNT / 2;
 
         vm.startPrank(USER);
@@ -258,11 +258,11 @@ contract TestGreatVault is Test {
     function testItBurnsGbpcFromTheCaller(uint256 gbpcToBurn) public {
         vm.assume(gbpcToBurn != 0);
 
-        uint256 maxBorrow = greatVault.previewDepositCollateral(COLLATERAL_AMOUNT);
-        vm.assume(gbpcToBurn <= maxBorrow);
+        uint256 maxMintableGbpc = greatVault.previewDepositCollateral(COLLATERAL_AMOUNT);
+        vm.assume(gbpcToBurn <= maxMintableGbpc);
 
         vm.startPrank(USER);
-        greatVault.depositCollateralAndMintGBPC(COLLATERAL_AMOUNT, maxBorrow);
+        greatVault.depositCollateralAndMintGBPC(COLLATERAL_AMOUNT, maxMintableGbpc);
         uint256 initialUserGbpcBal = gbpCoin.balanceOf(USER);
         uint256 initialUserGbpcMinted = greatVault.gbpcMinted(USER);
 
@@ -278,8 +278,8 @@ contract TestGreatVault is Test {
     /* ========================= LIQUIDATE ========================= */
 
     function testRevertsIfHealthFactorIsNotBroken(uint256 gbpcToMint) public {
-        uint256 maxBorrow = greatVault.previewDepositCollateral(COLLATERAL_AMOUNT);
-        vm.assume(gbpcToMint <= maxBorrow);
+        uint256 maxMintableGbpc = greatVault.previewDepositCollateral(COLLATERAL_AMOUNT);
+        vm.assume(gbpcToMint <= maxMintableGbpc);
 
         uint256 gbpcToRepay = gbpcToMint.mulDiv(CLOSE_FACTOR, ONE_HUNDRED_PERCENT);
         vm.assume(gbpcToRepay != 0);
@@ -296,10 +296,10 @@ contract TestGreatVault is Test {
     }
 
     function _breakHealthFactorOf(address account) internal returns (uint256 closeFactorAmount) {
-        uint256 maxBorrow = greatVault.previewDepositCollateral(COLLATERAL_AMOUNT);
+        uint256 maxMintableGbpc = greatVault.previewDepositCollateral(COLLATERAL_AMOUNT);
 
         vm.prank(account);
-        greatVault.depositCollateralAndMintGBPC(COLLATERAL_AMOUNT, maxBorrow);
+        greatVault.depositCollateralAndMintGBPC(COLLATERAL_AMOUNT, maxMintableGbpc);
 
         (, int256 wethUsdPrice,,,) = AggregatorV3Interface(wEthUsdPriceFeed).latestRoundData();
 
@@ -307,7 +307,7 @@ contract TestGreatVault is Test {
         MockV3Aggregator(wEthUsdPriceFeed).updateAnswer(wethUsdPrice - 1);
         assert(greatVault.healthFactor(account) < MIN_HEALTH_FACTOR);
 
-        closeFactorAmount = maxBorrow.mulDiv(CLOSE_FACTOR, ONE_HUNDRED_PERCENT);
+        closeFactorAmount = maxMintableGbpc.mulDiv(CLOSE_FACTOR, ONE_HUNDRED_PERCENT);
     }
 
     function testRevertsIfRepayAmountExceedsCloseFactor() public {
@@ -339,7 +339,7 @@ contract TestGreatVault is Test {
     }
 
     function testLiquidatorReceivesSomeCollateralAtADiscount(uint256 gbpcToRepay) public {
-        // Very mall GBPC amounts which are inferior to WETH will not have any effect on the health factor
+        // Very small GBPC amounts which are inferior to WETH will not have any effect on the health factor
         vm.assume(gbpcToRepay > 1e4);
 
         uint256 closeFactorAmount = _breakHealthFactorOf(USER);
@@ -371,19 +371,50 @@ contract TestGreatVault is Test {
         assertEq(collateralAmount, expectedCollateralAmount);
     }
 
+    /* ========================= PREVIEW DEPOSIT COLLATERAL ========================= */
+
+    function testReturnsMaxGbpcYouCanMintForSpecifiedCollateral(uint128 collateralAmount) public {
+        vm.assume(collateralAmount > 1);
+        uint256 maxMintableGbpc = greatVault.previewDepositCollateral(collateralAmount);
+
+        vm.startPrank(USER);
+
+        // Should break health factor if collateral is less than the minimum.
+        vm.expectRevert(GreatVault.GV__HealthFactorBroken.selector);
+        greatVault.depositCollateralAndMintGBPC(collateralAmount - 1, maxMintableGbpc);
+
+        // Should break health factor if GBPC minted is more than the maximum.
+        vm.expectRevert(GreatVault.GV__HealthFactorBroken.selector);
+        greatVault.depositCollateralAndMintGBPC(collateralAmount, maxMintableGbpc + 1);
+
+        // Should not break health factor
+        greatVault.depositCollateralAndMintGBPC(collateralAmount, maxMintableGbpc);
+
+        vm.stopPrank();
+    }
+
+    /* ========================= PREVIEW MINT GBPC ========================= */
+
+    function testReturnsMinCollateralToDepositForSpecifiedGbpcToMint(uint128 collateralAmount) public {
+        uint256 maxMintableGbpc = greatVault.previewDepositCollateral(collateralAmount);
+        uint256 minCollateralDeposit = greatVault.previewMintGBPC(maxMintableGbpc);
+
+        assertEq(minCollateralDeposit, collateralAmount);
+    }
+
     /* =========================  COLLATERAL AND GBPC PRICE CONVERSIONS ========================= */
 
     function testCollateralToGbp() public {
-        uint256 ethGpbAmount = greatVault.collateralToGbp(COLLATERAL_AMOUNT);
+        uint256 ethGbpAmount = greatVault.collateralToGbp(COLLATERAL_AMOUNT);
         uint256 expectedgbpAmount = 3968015794669299111549; // Pre-calculated with mock price feed data
 
-        assertEq(ethGpbAmount, expectedgbpAmount);
+        assertEq(ethGbpAmount, expectedgbpAmount);
     }
 
     function testgbpToCollateral() public {
-        uint256 gpbEthAmount = greatVault.gbpToCollateral(3968015794669299111550);
+        uint256 gbpEthAmount = greatVault.gbpToCollateral(3968015794669299111550);
         uint256 expectedEthAmount = COLLATERAL_AMOUNT; // Pre-calculated with mock price feed data
 
-        assertEq(gpbEthAmount, expectedEthAmount);
+        assertEq(gbpEthAmount, expectedEthAmount);
     }
 }
