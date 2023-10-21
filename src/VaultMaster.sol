@@ -7,7 +7,7 @@ import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IER
 
 import {GBPCoin} from "./GBPCoin.sol";
 import {GreatVault} from "./GreatVault.sol";
-import {USDPriceFeed} from "./utils//Structs.sol";
+import {USDPriceFeed} from "./utils/Structs.sol";
 
 /**
  * @title Vault Master
@@ -17,30 +17,25 @@ import {USDPriceFeed} from "./utils//Structs.sol";
  * @custom:security-contact Contact: solomonbotchway7@gmail.com
  */
 contract VaultMaster is Ownable {
-    error GV__InvalidAddress(address address_);
-    error GC__DuplicateCollateral(address collateral);
-    error GV__IncompatibleCollateral();
-    error GV__IncompatiblePriceFeed();
+    error VM__InvalidAddress(address address_);
+    error VM__DuplicateCollateral(address collateral);
 
-    USDPriceFeed private _gbpUsdPriceFeed;
     mapping(address collateral => address vault) private _vaults;
-    GBPCoin public _gbpCoin;
+    USDPriceFeed private _gbpUsdPriceFeed;
+    GBPCoin private _gbpCoin;
 
     event VaultDeployed(address indexed collateral, address indexed vault);
 
     modifier nonZeroAddress(address address_) {
-        if (address_ == address(0)) revert GV__InvalidAddress(address_);
+        if (address_ == address(0)) revert VM__InvalidAddress(address_);
         _;
     }
 
-    constructor(address greatDAO_, address gbpCoin_, address gbpUsdPriceFeed_, uint8 gbpUsdPriceFeedDecimals_)
-        Ownable(greatDAO_)
-        nonZeroAddress(greatDAO_)
+    constructor(address greatTimeLock_, address gbpCoin_, address gbpUsdPriceFeed_, uint8 gbpUsdPriceFeedDecimals_)
+        Ownable(greatTimeLock_)
+        nonZeroAddress(greatTimeLock_)
     {
         _gbpCoin = GBPCoin(gbpCoin_);
-
-        if (_gbpCoin.decimals() < gbpUsdPriceFeedDecimals_) revert GV__IncompatiblePriceFeed();
-
         _gbpUsdPriceFeed = USDPriceFeed({feed: gbpUsdPriceFeed_, decimals: gbpUsdPriceFeedDecimals_});
     }
 
@@ -59,17 +54,9 @@ contract VaultMaster is Ownable {
         uint8 liquidationSpread,
         uint8 closeFactor
     ) external onlyOwner {
-        if (_vaults[collateral] != address(0)) revert GC__DuplicateCollateral(collateral);
+        if (_vaults[collateral] != address(0)) revert VM__DuplicateCollateral(collateral);
 
-        GBPCoin gbpCoin_ = _gbpCoin;
-
-        /// @custom:audit Collateral to GBPC conversion in the vault assumes the GBPC decimals are greater than or
-        /// equal to the decimals of the Collateral and Pricefeed.
-        if (gbpCoin_.decimals() < IERC20Metadata(collateral).decimals()) revert GV__IncompatibleCollateral();
-        if (gbpCoin_.decimals() < priceFeedDecimals) revert GV__IncompatiblePriceFeed();
-
-        address vaultOwner = owner(); // The DAO will own the vault as well.
-
+        address vaultOwner = owner(); // The DAO's timelock will own the vault as well.
         GreatVault vault = new GreatVault(
             vaultOwner, 
             collateral, 
@@ -83,8 +70,14 @@ contract VaultMaster is Ownable {
 
         emit VaultDeployed(collateral, address(vault));
 
+        GBPCoin gbpCoin_ = _gbpCoin;
         bytes32 minterRole = gbpCoin_.MINTER_ROLE();
         gbpCoin_.grantRole(minterRole, address(vault));
+    }
+
+    function setGbpUsdPriceFeed(USDPriceFeed calldata newPriceFeed) external onlyOwner {
+        _gbpUsdPriceFeed = newPriceFeed;
+        // TODO: emit
     }
 
     function gbpUsdPriceFeed() external view returns (USDPriceFeed memory) {
