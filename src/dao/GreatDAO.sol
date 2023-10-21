@@ -6,10 +6,8 @@ import {GovernorSettings} from "@openzeppelin/contracts/governance/extensions/Go
 import {GovernorCountingSimple} from "@openzeppelin/contracts/governance/extensions/GovernorCountingSimple.sol";
 import {GovernorVotes, IVotes} from "@openzeppelin/contracts/governance/extensions/GovernorVotes.sol";
 import {GovernorVotesQuorumFraction} from "@openzeppelin/contracts/governance/extensions/GovernorVotesQuorumFraction.sol";
-import {
-    GovernorTimelockControl,
-    TimelockController
-} from "@openzeppelin/contracts/governance/extensions/GovernorTimelockControl.sol";
+import {GovernorTimelockControl} from "@openzeppelin/contracts/governance/extensions/GovernorTimelockControl.sol";
+import {TimelockController} from "openzeppelin-contracts/contracts/governance/TimelockController.sol";
 
 /// @custom:security-contact solomonbotchway7@gmail.com
 contract GreatDAO is
