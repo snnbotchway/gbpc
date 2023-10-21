@@ -25,6 +25,7 @@ contract VaultMaster is Ownable {
     GBPCoin private _gbpCoin;
 
     event VaultDeployed(address indexed collateral, address indexed vault);
+    event GbpUsdPriceFeedSet(USDPriceFeed newPriceFeed);
 
     modifier nonZeroAddress(address address_) {
         if (address_ == address(0)) revert VM__InvalidAddress(address_);
@@ -77,7 +78,7 @@ contract VaultMaster is Ownable {
 
     function setGbpUsdPriceFeed(USDPriceFeed calldata newPriceFeed) external onlyOwner {
         _gbpUsdPriceFeed = newPriceFeed;
-        // TODO: emit
+        emit GbpUsdPriceFeedSet(newPriceFeed);
     }
 
     function gbpUsdPriceFeed() external view returns (USDPriceFeed memory) {
