@@ -50,6 +50,10 @@ contract GreatVault is Ownable, Pausable {
     event CollateralRedeemed(address indexed from, address indexed receiver, uint256 amount);
     event GBPCBurned(address indexed debtor, address indexed gbpcFrom, uint256 amount);
     event Liquidated(address indexed liquidated, address indexed liquidator, uint256 collateralRedeemed, uint256 gbpcRepaid);
+    event LiquidationSpreadSet(uint8 newSpread);
+    event LiquidationThresholdSet(uint8 newThreshold);
+    event CloseFactorSet(uint8 newFactor);
+    event CollateralUsdPriceFeedSet(USDPriceFeed newPriceFeed);
 
     modifier nonZeroAmount(uint256 amount) {
         if (amount == 0) revert GV__InvalidAmount(amount);
@@ -156,17 +160,17 @@ contract GreatVault is Ownable, Pausable {
 
     function setLiquidationSpread(uint8 newSpread) external nonZeroAmount(newSpread) onlyOwner whenNotPaused {
         _liquidationSpread = newSpread;
-        // TODO: emit
+        emit LiquidationSpreadSet(newSpread);
     }
 
     function setLiquidationThreshold(uint8 newThreshold) external nonZeroAmount(newThreshold) onlyOwner whenNotPaused {
         _liquidationThreshold = newThreshold;
-        // TODO: emit
+        emit LiquidationThresholdSet(newThreshold);
     }
 
     function setCloseFactor(uint8 newFactor) external nonZeroAmount(newFactor) onlyOwner whenNotPaused {
         _closeFactor = newFactor;
-        // TODO: emit
+        emit CloseFactorSet(newFactor);
     }
 
     function setCollateralUsdPriceFeed(USDPriceFeed calldata newPriceFeed)
@@ -176,7 +180,7 @@ contract GreatVault is Ownable, Pausable {
         whenNotPaused
     {
         _collateralUsdPriceFeed = newPriceFeed;
-        // TODO: emit
+        emit CollateralUsdPriceFeedSet(newPriceFeed);
     }
 
     function depositCollateral(address receiver, uint256 amount)
@@ -241,52 +245,38 @@ contract GreatVault is Ownable, Pausable {
 
     // TODO: Possible 0 denominators, zero amounts and addresses, whenNotPaused
 
-    function _collateralToGBP(uint256 collateralAmount) private view returns (uint256 gbpPrice) {
+    function _collateralToGBP(uint256 collateralValue) private view returns (uint256 gbpValue) {
         USDPriceFeed memory collateralUsdPriceFeed_ = _collateralUsdPriceFeed;
         USDPriceFeed memory gbpUsdPriceFeed = _master.gbpUsdPriceFeed();
         uint8 gbpcDecimals = gbpCoin().decimals();
         uint8 collateralDecimals = _collateral.decimals();
 
-        (, int256 collateralToUsdAnswer,,,) = AggregatorV3Interface(collateralUsdPriceFeed_.feed).latestRoundData();
-        (, int256 gbpToUsdAnswer,,,) = AggregatorV3Interface(gbpUsdPriceFeed.feed).latestRoundData();
+        (, int256 collateralUsdAnswer,,,) = AggregatorV3Interface(collateralUsdPriceFeed_.feed).latestRoundData();
+        (, int256 gbpUsdAnswer,,,) = AggregatorV3Interface(gbpUsdPriceFeed.feed).latestRoundData();
 
-        // Sync price decimals with gbpc's decimals by adding or removing decimals
-        uint256 assetUsdPrice = gbpcDecimals > collateralUsdPriceFeed_.decimals
-            ? uint256(collateralToUsdAnswer) * 10 ** (gbpcDecimals - collateralUsdPriceFeed_.decimals)
-            : uint256(collateralToUsdAnswer) / 10 ** (collateralUsdPriceFeed_.decimals - gbpcDecimals);
+        uint256 collateralUsdPrice =
+            _syncDecimals(uint256(collateralUsdAnswer), collateralUsdPriceFeed_.decimals, gbpcDecimals);
+        uint256 gbpUsdPrice = _syncDecimals(uint256(gbpUsdAnswer), gbpUsdPriceFeed.decimals, gbpcDecimals);
 
-        uint256 gbpUsdPrice = gbpcDecimals > gbpUsdPriceFeed.decimals
-            ? uint256(gbpToUsdAnswer) * 10 ** (gbpcDecimals - gbpUsdPriceFeed.decimals)
-            : uint256(gbpToUsdAnswer) / 10 ** (gbpUsdPriceFeed.decimals - gbpcDecimals);
-
-        gbpPrice = assetUsdPrice.mulDiv(collateralAmount, gbpUsdPrice);
-        gbpPrice = gbpcDecimals > collateralDecimals
-            ? gbpPrice * 10 ** (gbpcDecimals - collateralDecimals)
-            : gbpPrice / 10 ** (collateralDecimals - gbpcDecimals);
+        gbpValue = collateralUsdPrice.mulDiv(collateralValue, gbpUsdPrice);
+        gbpValue = _syncDecimals(gbpValue, collateralDecimals, gbpcDecimals);
     }
 
-    function _GBPToCollateral(uint256 amountInGBP) private view returns (uint256 collateralAmount) {
+    function _GBPToCollateral(uint256 gbpValue) private view returns (uint256 collateralValue) {
         USDPriceFeed memory collateralUsdPriceFeed_ = _collateralUsdPriceFeed;
         USDPriceFeed memory gbpUsdPriceFeed = _master.gbpUsdPriceFeed();
         uint8 gbpcDecimals = gbpCoin().decimals();
         uint8 collateralDecimals = _collateral.decimals();
 
-        (, int256 collateralToUsdAnswer,,,) = AggregatorV3Interface(collateralUsdPriceFeed_.feed).latestRoundData();
-        (, int256 gbpToUsdAnswer,,,) = AggregatorV3Interface(gbpUsdPriceFeed.feed).latestRoundData();
+        (, int256 collateralUsdAnswer,,,) = AggregatorV3Interface(collateralUsdPriceFeed_.feed).latestRoundData();
+        (, int256 gbpUsdAnswer,,,) = AggregatorV3Interface(gbpUsdPriceFeed.feed).latestRoundData();
 
-        // Sync price decimals with collateral's decimals by adding or removing decimals
-        uint256 assetUsdPrice = collateralDecimals > collateralUsdPriceFeed_.decimals
-            ? uint256(collateralToUsdAnswer) * 10 ** (collateralDecimals - collateralUsdPriceFeed_.decimals)
-            : uint256(collateralToUsdAnswer) / 10 ** (collateralUsdPriceFeed_.decimals - collateralDecimals);
+        uint256 collateralUsdPrice =
+            _syncDecimals(uint256(collateralUsdAnswer), collateralUsdPriceFeed_.decimals, collateralDecimals);
+        uint256 gbpUsdPrice = _syncDecimals(uint256(gbpUsdAnswer), gbpUsdPriceFeed.decimals, collateralDecimals);
 
-        uint256 gbpUsdPrice = collateralDecimals > gbpUsdPriceFeed.decimals
-            ? uint256(gbpToUsdAnswer) * 10 ** (collateralDecimals - gbpUsdPriceFeed.decimals)
-            : uint256(gbpToUsdAnswer) / 10 ** (gbpUsdPriceFeed.decimals - collateralDecimals);
-
-        collateralAmount = gbpUsdPrice.mulDiv(amountInGBP, assetUsdPrice);
-        collateralAmount = collateralDecimals > gbpcDecimals
-            ? collateralAmount * 10 ** (collateralDecimals - gbpcDecimals)
-            : collateralAmount / 10 ** (gbpcDecimals - collateralDecimals);
+        collateralValue = gbpUsdPrice.mulDiv(gbpValue, collateralUsdPrice);
+        collateralValue = _syncDecimals(collateralValue, gbpcDecimals, collateralDecimals);
     }
 
     function _borrowingCapacity(address account) private view returns (uint256 borrowingCapacity) {
@@ -302,6 +292,12 @@ contract GreatVault is Ownable, Pausable {
         uint256 debt = _gbpcMinted[account];
         if (debt == 0) return type(uint256).max;
         healthFactor = _borrowingCapacity(account).mulDiv(PRECISION, debt);
+    }
+
+    function _syncDecimals(uint256 value, uint8 fromDecimals, uint8 toDecimals) private pure returns (uint256) {
+        if (fromDecimals > toDecimals) return value / 10 ** (fromDecimals - toDecimals);
+        if (fromDecimals < toDecimals) return value * 10 ** (toDecimals - fromDecimals);
+        return value;
     }
 
     function liquidationSpread() external view returns (uint8) {
