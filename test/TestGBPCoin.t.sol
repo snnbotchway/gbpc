@@ -2,10 +2,8 @@
 pragma solidity ^0.8.20;
 
 import {AggregatorV3Interface} from "chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
-import {console2} from "forge-std/console2.sol";
 import {Test, console2} from "forge-std/Test.sol";
 import {IAccessControl} from "openzeppelin-contracts/contracts/access/IAccessControl.sol";
-import {IERC20} from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 
 import {DeployGBPSystem} from "script/DeployGBPSystem.s.sol";
 import {GBPCoin} from "src/GBPCoin.sol";
@@ -36,7 +34,7 @@ contract TestGBPCoin is Test {
 
         (,,, address wEth, address wEthUsdPriceFeed, uint8 wEthUsdPriceFeedDecimals) = config.activeNetworkConfig();
 
-        vm.prank(address(greatDAO));
+        vm.prank(address(timelock));
         vaultMaster.deployVault(
             wEth, wEthUsdPriceFeed, wEthUsdPriceFeedDecimals, LIQUIDATION_THRESHOLD, LIQUIDATION_SPREAD, CLOSE_FACTOR
         );
