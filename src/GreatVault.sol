@@ -145,8 +145,8 @@ contract GreatVault is Ownable, Pausable {
 
         if (gbpcToRepay > closeFactorAmount) revert GV__CloseFactorAmountExceeded(closeFactorAmount);
 
-        // TODO: liquidatorCollateral is in gbpc
-        uint256 liquidatorCollateral = _calculateLiquidatorCollateral(gbpcToRepay);
+        uint256 liquidatorGBPCollateral = _calculateLiquidatorCollateralGBP(gbpcToRepay);
+        uint256 liquidatorCollateral = _GBPToCollateral(liquidatorGBPCollateral);
 
         emit Liquidated(accountToLiquidate, msg.sender, liquidatorCollateral, gbpcToRepay);
 
@@ -230,7 +230,7 @@ contract GreatVault is Ownable, Pausable {
         gbpCoin().burnFrom(gbpcFrom, amount);
     }
 
-    function _calculateLiquidatorCollateral(uint256 gbpcToRepay) private view returns (uint256 liquidatorCollateral) {
+    function _calculateLiquidatorCollateralGBP(uint256 gbpcToRepay) private view returns (uint256 liquidatorCollateral) {
         uint256 collateralGbpcPrice = _collateralToGBP(1 * 10 ** _collateral.decimals());
 
         uint256 liquidatorCollateralPrice =
@@ -251,16 +251,16 @@ contract GreatVault is Ownable, Pausable {
         (, int256 gbpToUsdAnswer,,,) = AggregatorV3Interface(gbpUsdPriceFeed.feed).latestRoundData();
 
         // Sync price decimals with gbpc's decimals by adding or removing decimals
-        uint256 assetUsdPrice = gbpcDecimals >= collateralUsdPriceFeed_.decimals
+        uint256 assetUsdPrice = gbpcDecimals > collateralUsdPriceFeed_.decimals
             ? uint256(collateralToUsdAnswer) * 10 ** (gbpcDecimals - collateralUsdPriceFeed_.decimals)
             : uint256(collateralToUsdAnswer) / 10 ** (collateralUsdPriceFeed_.decimals - gbpcDecimals);
 
-        uint256 gbpUsdPrice = gbpcDecimals >= gbpUsdPriceFeed.decimals
+        uint256 gbpUsdPrice = gbpcDecimals > gbpUsdPriceFeed.decimals
             ? uint256(gbpToUsdAnswer) * 10 ** (gbpcDecimals - gbpUsdPriceFeed.decimals)
             : uint256(gbpToUsdAnswer) / 10 ** (gbpUsdPriceFeed.decimals - gbpcDecimals);
 
         gbpPrice = assetUsdPrice.mulDiv(collateralAmount, gbpUsdPrice);
-        gbpPrice = gbpcDecimals >= collateralDecimals
+        gbpPrice = gbpcDecimals > collateralDecimals
             ? gbpPrice * 10 ** (gbpcDecimals - collateralDecimals)
             : gbpPrice / 10 ** (collateralDecimals - gbpcDecimals);
     }
@@ -275,16 +275,16 @@ contract GreatVault is Ownable, Pausable {
         (, int256 gbpToUsdAnswer,,,) = AggregatorV3Interface(gbpUsdPriceFeed.feed).latestRoundData();
 
         // Sync price decimals with collateral's decimals by adding or removing decimals
-        uint256 assetUsdPrice = collateralDecimals >= collateralUsdPriceFeed_.decimals
+        uint256 assetUsdPrice = collateralDecimals > collateralUsdPriceFeed_.decimals
             ? uint256(collateralToUsdAnswer) * 10 ** (collateralDecimals - collateralUsdPriceFeed_.decimals)
             : uint256(collateralToUsdAnswer) / 10 ** (collateralUsdPriceFeed_.decimals - collateralDecimals);
 
-        uint256 gbpUsdPrice = collateralDecimals >= gbpUsdPriceFeed.decimals
+        uint256 gbpUsdPrice = collateralDecimals > gbpUsdPriceFeed.decimals
             ? uint256(gbpToUsdAnswer) * 10 ** (collateralDecimals - gbpUsdPriceFeed.decimals)
             : uint256(gbpToUsdAnswer) / 10 ** (gbpUsdPriceFeed.decimals - collateralDecimals);
 
         collateralAmount = gbpUsdPrice.mulDiv(amountInGBP, assetUsdPrice);
-        collateralAmount = collateralDecimals >= gbpcDecimals
+        collateralAmount = collateralDecimals > gbpcDecimals
             ? collateralAmount * 10 ** (collateralDecimals - gbpcDecimals)
             : collateralAmount / 10 ** (gbpcDecimals - collateralDecimals);
     }
