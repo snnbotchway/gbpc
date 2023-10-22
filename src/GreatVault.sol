@@ -12,10 +12,12 @@ import {VaultMaster} from "./VaultMaster.sol";
 import {USDPriceFeed} from "./utils/Structs.sol";
 
 /**
- * @title Great Vault - Named after The Great Britain
+ * @title Great Vault - Named after The Great Britain.
  * @author Solomon Botchway
  * @notice This contract represents the Great Vault, which is responsible for minting and burning GBPC as needed.
- * @dev The GreatVault owns the GBPC token, and is the only contract that can mint or burn GBPC.
+ * @notice It is assumed that the total value of the underlying collateral of each vault will always be more than the GBPC minted.
+ * @dev All Great Vaults deployed by the Vault Master are minters of the GBPC token, and are the only contracts that
+ * can mint or burn GBPC.
  * @custom:security-contact Contact: solomonbotchway7@gmail.com
  */
 contract GreatVault is Ownable {
@@ -71,6 +73,19 @@ contract GreatVault is Ownable {
         _;
     }
 
+    /**
+     *
+     * @param owner_ The Vault Owner, which will be the Great DAO's Timelock.
+     * @param collateral_ Address of the ERC20 token to use as collateral for minting GBPC.
+     * @param usdPriceFeed_ Address of the Chainlink USD Pricefeed of the collateral.
+     * @param priceFeedDecimals_ Decimals of the Chainlink USD Pricefeed of the collateral.
+     * @param liquidationThreshold_ The percentage at which the collateral value is counted towards the borrowing capacity.
+     * Borrowing Capacity(BC) refers to the total amount of GBPC that an account is allowed to mint, given its collateral amount.
+     * BC = (GBP value of collateral * Liquidation Threshold) / 100.
+     * @param liquidationSpread_ The bonus, or discount, that a liquidator can collect when liquidating collateral. This spread incentivises
+     * liquidators to act promptly once a position crosses the liquidation threshold.
+     * @param closeFactor_ A percentage of the maximum proportion of the debt that is allowed to be repaid in a single liquidation.
+     */
     constructor(
         address owner_,
         address collateral_,

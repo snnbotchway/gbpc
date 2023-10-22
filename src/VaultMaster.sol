@@ -12,8 +12,7 @@ import {USDPriceFeed} from "./utils/Structs.sol";
 /**
  * @title Vault Master
  * @author Solomon Botchway
- * @notice This contract represents the Vault master
- * @dev // TODO
+ * @notice This contract represents the Vault master which is owned by the GreatDAO's timelock.
  * @custom:security-contact Contact: solomonbotchway7@gmail.com
  */
 contract VaultMaster is Ownable {
@@ -32,6 +31,13 @@ contract VaultMaster is Ownable {
         _;
     }
 
+    /**
+     *
+     * @param greatTimeLock_ Address of the Great DAO's timelock. The owner of all deployed Great Vaults by this contract will be the timelock.
+     * @param gbpCoin_ Address of the GBPC stablecoin.
+     * @param gbpUsdPriceFeed_ GBP Chainlink USD price feed address.
+     * @param gbpUsdPriceFeedDecimals_ GBP Chainlink USD price feed decimals.
+     */
     constructor(address greatTimeLock_, address gbpCoin_, address gbpUsdPriceFeed_, uint8 gbpUsdPriceFeedDecimals_)
         Ownable(greatTimeLock_)
         nonZeroAddress(greatTimeLock_)
@@ -41,11 +47,17 @@ contract VaultMaster is Ownable {
     }
 
     /**
-     *
-     * @param collateral Must have decimals places less than or equal to that of the GBP Coin(18)
-     * @param usdPriceFeed bla
-     * @param priceFeedDecimals Must be less than or equal to that of the GBP Coin(18)
-     * @param liquidationSpread bla
+     * Deploys a Great Vault for the specified collateral, Setting this contract's owner as the vault's owner(the DAO's timelock),
+     * and granting the GBPC MINTER_ROLE to the deployed vault.
+     * @param collateral Address of the ERC20 token to use as collateral for minting GBPC.
+     * @param usdPriceFeed Address of the Chainlink USD Pricefeed of the collateral.
+     * @param priceFeedDecimals Decimals of the Chainlink USD Pricefeed of the collateral.
+     * @param liquidationThreshold The percentage at which the collateral value is counted towards the borrowing capacity.
+     * Borrowing Capacity(BC) refers to the total amount of GBPC that an account is allowed to mint, given its collateral amount.
+     * BC = (GBP value of collateral * Liquidation Threshold) / 100.
+     * @param liquidationSpread The bonus, or discount, that a liquidator can collect when liquidating collateral. This spread incentivises
+     * liquidators to act promptly once a position crosses the liquidation threshold.
+     * @param closeFactor A percentage of the maximum proportion of the debt that is allowed to be repaid in a single liquidation.
      */
     function deployVault(
         address collateral,
