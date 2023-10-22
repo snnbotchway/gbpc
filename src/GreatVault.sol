@@ -278,8 +278,6 @@ contract GreatVault is Ownable {
     }
 
     function previewMintGBPC(uint256 gbpcAmount) external view returns (uint256 minCollateralDeposit) {
-        if (gbpcAmount == 0) return 0;
-
         uint256 collateralGbpValue = gbpcAmount.mulDiv(ONE_HUNDRED_PERCENT, _liquidationThreshold);
         minCollateralDeposit = _gbpToCollateral(collateralGbpValue) + 1;
     }
