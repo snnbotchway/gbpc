@@ -18,7 +18,7 @@ VaultMaster is responsible for creating and managing Vaults (Great Vaults) and i
 
 Great Vaults are created by the VaultMaster. To create a Vault, a proposal, voting, and execution from the GreatDAO are required. Key parameters for Vault creation include collateral (ERC20), USD price feed, liquidation threshold, liquidation spread, and close factor. They are the only contracts that can mint or burn GBPC.
 
-### 4. GreatDAO
+### 4. Great DAO
 
 GreatDAO is the decentralized autonomous organization that governs the entire ecosystem. It has ownership control over the VaultMaster through its timelock and can adjust parameters in Vaults, ensuring proper governance.
 
