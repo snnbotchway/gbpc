@@ -6,7 +6,7 @@ import {Test, console2} from "forge-std/Test.sol";
 import {IAccessControl} from "openzeppelin-contracts/contracts/access/IAccessControl.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
-import {DeployGBPSystem} from "script/DeployGBPSystem.s.sol";
+import {DeployGBPCSystem} from "script/DeployGBPCSystem.s.sol";
 import {GBPCoin} from "src/GBPCoin.sol";
 import {GreatDAO} from "src/dao/GreatDAO.sol";
 import {GreatCoin} from "src/dao/GreatCoin.sol";
@@ -23,7 +23,7 @@ contract TestVaultMaster is Test {
     GreatTimeLock public timelock;
     VaultMaster public vaultMaster;
     HelperConfig public config;
-    DeployGBPSystem public deployer;
+    DeployGBPCSystem public deployer;
 
     address public wEth;
     address public wEthUsdPriceFeed;
@@ -36,7 +36,7 @@ contract TestVaultMaster is Test {
     uint8 public constant CLOSE_FACTOR = 50;
 
     function setUp() public {
-        deployer = new DeployGBPSystem();
+        deployer = new DeployGBPCSystem();
         (greatDAO, timelock, vaultMaster, gbpCoin, greatCoin, config) = deployer.run();
 
         (, gbpUsdPriceFeed, gbpUsdPriceFeedDecimals, wEth, wEthUsdPriceFeed, wEthUsdPriceFeedDecimals) =

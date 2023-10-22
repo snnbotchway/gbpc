@@ -9,7 +9,7 @@ import {ERC20Mock} from "openzeppelin-contracts/contracts/mocks/token/ERC20Mock.
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {MockV3Aggregator} from "chainlink/contracts/src/v0.8/tests/MockV3Aggregator.sol";
 
-import {DeployGBPSystem} from "script/DeployGBPSystem.s.sol";
+import {DeployGBPCSystem} from "script/DeployGBPCSystem.s.sol";
 import {GBPCoin} from "src/GBPCoin.sol";
 import {GreatDAO} from "src/dao/GreatDAO.sol";
 import {GreatCoin} from "src/dao/GreatCoin.sol";
@@ -51,7 +51,7 @@ contract TestGreatVault is Test {
     address public LIQUIDATOR = makeAddr("liquidator");
 
     function setUp() public {
-        DeployGBPSystem deployer = new DeployGBPSystem();
+        DeployGBPCSystem deployer = new DeployGBPCSystem();
         (greatDAO, timelock, vaultMaster, gbpCoin, greatCoin, config) = deployer.run();
 
         address wEthAddress;
@@ -396,6 +396,7 @@ contract TestGreatVault is Test {
     /* ========================= PREVIEW MINT GBPC ========================= */
 
     function testReturnsMinCollateralToDepositForSpecifiedGbpcToMint(uint128 collateralAmount) public {
+        vm.assume(collateralAmount != 0);
         uint256 maxMintableGbpc = greatVault.previewDepositCollateral(collateralAmount);
         uint256 minCollateralDeposit = greatVault.previewMintGBPC(maxMintableGbpc);
 

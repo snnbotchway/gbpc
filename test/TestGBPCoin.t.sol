@@ -5,7 +5,7 @@ import {AggregatorV3Interface} from "chainlink/contracts/src/v0.8/interfaces/Agg
 import {Test, console2} from "forge-std/Test.sol";
 import {IAccessControl} from "openzeppelin-contracts/contracts/access/IAccessControl.sol";
 
-import {DeployGBPSystem} from "script/DeployGBPSystem.s.sol";
+import {DeployGBPCSystem} from "script/DeployGBPCSystem.s.sol";
 import {GBPCoin} from "src/GBPCoin.sol";
 import {GreatDAO} from "src/dao/GreatDAO.sol";
 import {GreatCoin} from "src/dao/GreatCoin.sol";
@@ -22,14 +22,14 @@ contract TestGBPCoin is Test {
     GreatVault public greatVault;
     VaultMaster public vaultMaster;
     HelperConfig public config;
-    DeployGBPSystem public deployer;
+    DeployGBPCSystem public deployer;
 
     uint8 public constant LIQUIDATION_THRESHOLD = 80;
     uint8 public constant LIQUIDATION_SPREAD = 10;
     uint8 public constant CLOSE_FACTOR = 50;
 
     function setUp() public {
-        deployer = new DeployGBPSystem();
+        deployer = new DeployGBPCSystem();
         (greatDAO, timelock, vaultMaster, gbpCoin, greatCoin, config) = deployer.run();
 
         (,,, address wEth, address wEthUsdPriceFeed, uint8 wEthUsdPriceFeedDecimals) = config.activeNetworkConfig();

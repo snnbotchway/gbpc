@@ -10,9 +10,8 @@ import {GreatTimeLock} from "src/dao/GreatTimeLock.sol";
 import {HelperConfig} from "./HelperConfig.s.sol";
 import {VaultMaster} from "src/VaultMaster.sol";
 
-contract DeployGBPSystem is Script {
-    uint256 public constant MIN_DELAY = 1 days;
-    address public constant TIMELOCK_ADMIN = address(0);
+contract DeployGBPCSystem is Script {
+    uint256 public constant MIN_DELAY = 5 hours;
     address[] proposers;
     address[] executors;
 
@@ -34,9 +33,13 @@ contract DeployGBPSystem is Script {
         vm.startBroadcast(deployerKey);
         gbpCoin = new GBPCoin(deployer);
         greatCoin = new GreatCoin(deployer);
-        timelock = new GreatTimeLock(MIN_DELAY, proposers, executors, TIMELOCK_ADMIN);
+        timelock = new GreatTimeLock(MIN_DELAY, proposers, executors, deployer);
         greatDAO = new GreatDAO(greatCoin, timelock);
         vaultMaster = new VaultMaster(address(timelock), address(gbpCoin), gbpUsdPriceFeed, gbpUsdPriceFeedDecimals);
+
+        timelock.grantRole(timelock.PROPOSER_ROLE(), address(greatDAO));
+        timelock.grantRole(timelock.EXECUTOR_ROLE(), address(0));
+        timelock.renounceRole(timelock.DEFAULT_ADMIN_ROLE(), deployer);
 
         bytes32 adminRole = gbpCoin.DEFAULT_ADMIN_ROLE();
         gbpCoin.grantRole(adminRole, address(vaultMaster));
