@@ -92,11 +92,17 @@ contract GreatVault is Ownable {
     {
         _master = VaultMaster(msg.sender);
         _collateral = IERC20Metadata(collateral_);
-        _collateralUsdPriceFeed = USDPriceFeed({feed: usdPriceFeed_, decimals: priceFeedDecimals_});
+        USDPriceFeed memory collateralUsdPriceFeed_ = USDPriceFeed({feed: usdPriceFeed_, decimals: priceFeedDecimals_});
+        _collateralUsdPriceFeed = collateralUsdPriceFeed_;
 
         _liquidationSpread = liquidationSpread_;
         _liquidationThreshold = liquidationThreshold_;
         _closeFactor = closeFactor_;
+
+        emit LiquidationThresholdSet(liquidationThreshold_);
+        emit LiquidationSpreadSet(liquidationSpread_);
+        emit CloseFactorSet(closeFactor_);
+        emit CollateralUsdPriceFeedSet(collateralUsdPriceFeed_);
     }
 
     function depositCollateralAndMintGBPC(uint256 collateralAmount, uint256 gbpcAmount)
@@ -214,8 +220,6 @@ contract GreatVault is Ownable {
 
         gbpCoin().burnFrom(gbpcFrom, amount);
     }
-
-    // TODO: Possible 0 denominators, zero amounts and addresses, view functions no revert
 
     function _collateralToGbp(uint256 collateralValue) private view returns (uint256 gbpValue) {
         USDPriceFeed memory collaUsdPriceFeed = _collateralUsdPriceFeed;
