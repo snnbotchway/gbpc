@@ -5,6 +5,7 @@ import {AggregatorV3Interface} from "chainlink/contracts/src/v0.8/interfaces/Agg
 import {Test, console2} from "forge-std/Test.sol";
 import {IAccessControl} from "openzeppelin-contracts/contracts/access/IAccessControl.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {IGovernor} from "@openzeppelin/contracts/governance/IGovernor.sol";
 import {GovernorCountingSimple} from "@openzeppelin/contracts/governance/extensions/GovernorCountingSimple.sol";
 
 import {DeployGBPCSystem} from "script/DeployGBPCSystem.s.sol";
@@ -75,23 +76,20 @@ contract TestGreatDAO is Test {
         uint256 proposalId = greatDAO.propose(targets, values, calldatas, description);
         console2.log(uint256(greatDAO.state(proposalId)), "Proposal State after calling propose()");
 
-        vm.warp(block.number + greatDAO.votingDelay() + 1);
-        vm.roll(block.number + greatDAO.votingDelay() + 1);
+        vm.warp(greatDAO.proposalSnapshot(proposalId) + 1);
         console2.log(uint256(greatDAO.state(proposalId)), "Proposal State after waiting for votingDelay");
 
         uint8 support = uint8(GovernorCountingSimple.VoteType.For);
         vm.prank(USER);
         greatDAO.castVote(proposalId, support);
 
-        vm.warp(block.number + greatDAO.votingPeriod() + 1);
-        vm.roll(block.number + greatDAO.votingPeriod() + 1);
+        vm.warp(greatDAO.proposalDeadline(proposalId) + 1);
         console2.log(uint256(greatDAO.state(proposalId)), "Proposal State after voting period");
 
         bytes32 descriptionHash = keccak256(abi.encodePacked(description));
         greatDAO.queue(targets, values, calldatas, descriptionHash);
 
-        vm.warp(block.number + timelock.getMinDelay() + 1);
-        vm.roll(block.number + timelock.getMinDelay() + 1);
+        vm.warp(block.timestamp + timelock.getMinDelay() + 1);
         console2.log(uint256(greatDAO.state(proposalId)), "Proposal State after queueing and waiting for timelock minDelay");
 
         address initialVault = vaultMaster.collateralVault(wEth);
@@ -107,4 +105,21 @@ contract TestGreatDAO is Test {
         assertTrue(gbpCoin.hasRole(gbpCoin.MINTER_ROLE(), finalVault));
     }
 
+    function testGovernanceUsesElapsedDaysWithoutAdvancingBlocks() public {
+        targets.push(address(vaultMaster));
+        values.push(0);
+        calldatas.push(abi.encodeWithSelector(VaultMaster.setGbpUsdPriceFeed.selector, vaultMaster.gbpUsdPriceFeed()));
+        uint256 proposedAt = block.timestamp;
+        uint256 proposalId = greatDAO.propose(targets, values, calldatas, "Update oracle");
+        vm.warp(proposedAt + 1 days - 1);
+        assertEq(uint256(greatDAO.state(proposalId)), uint256(IGovernor.ProposalState.Pending));
+        vm.warp(proposedAt + 1 days + 1);
+        assertEq(uint256(greatDAO.state(proposalId)), uint256(IGovernor.ProposalState.Active));
+        vm.prank(USER);
+        greatDAO.castVote(proposalId, 1);
+        vm.warp(proposedAt + 1 days + 1 weeks);
+        assertEq(uint256(greatDAO.state(proposalId)), uint256(IGovernor.ProposalState.Active));
+        vm.warp(block.timestamp + 1);
+        assertEq(uint256(greatDAO.state(proposalId)), uint256(IGovernor.ProposalState.Succeeded));
+    }
 }

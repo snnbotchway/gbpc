@@ -51,8 +51,9 @@ Great Coin (GRC) is the governance token of the GreatDAO. It provides voting pow
 
 ### Governance and deployment compatibility
 
+- Governance uses timestamps: voting begins after one day and lasts one week, followed by the existing five-hour timelock.
 - These contracts are not upgradeable. The fixes require a new deployment and a separate migration plan for existing positions. `VaultMaster` construction and `deployVault` require a price-age limit; `USDPriceFeed` now contains `(feed, decimals, maxAge)`. Update proposal calldata to the new signatures.
-- Oracle validation follows the [Chainlink data-feed interface](https://docs.chain.link/data-feeds/api-reference).
+- Oracle validation follows the [Chainlink data-feed interface](https://docs.chain.link/data-feeds/api-reference); the governance clock follows [OpenZeppelin 5 timestamp-based governance](https://docs.openzeppelin.com/contracts/5.x/governance#timestamp_based_governance).
 
 ## Usage
 
