@@ -3,9 +3,7 @@ name: test
 on:
   push:
     branches: [ main ]
-
-env:
-  FOUNDRY_PROFILE: ci
+  pull_request:
 
 jobs:
   check:
@@ -15,14 +13,17 @@ jobs:
     name: foundry
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
-          submodules: recursive
+          submodules: true
+
+      - name: Initialize test dependency
+        run: git -C lib/forge-std submodule update --init lib/ds-test
 
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
         with:
-          version: nightly
+          version: v1.8.4
 
       - name: Run Forge build
         run: |

@@ -46,6 +46,13 @@ Great Coin (GRC) is the governance token of the GreatDAO. It provides voting pow
 
 ### Build
 
+Initialize the pinned dependencies, including the nested test dependency:
+
+```shell
+git submodule update --init
+git -C lib/forge-std submodule update --init lib/ds-test
+```
+
 ```shell
 forge build
 ```
