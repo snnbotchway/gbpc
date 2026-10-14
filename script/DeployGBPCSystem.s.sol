@@ -35,7 +35,9 @@ contract DeployGBPCSystem is Script {
         greatCoin = new GreatCoin(deployer);
         timelock = new GreatTimeLock(MIN_DELAY, proposers, executors, deployer);
         greatDAO = new GreatDAO(greatCoin, timelock);
-        vaultMaster = new VaultMaster(address(timelock), address(gbpCoin), gbpUsdPriceFeed, gbpUsdPriceFeedDecimals);
+        vaultMaster = new VaultMaster(
+            address(timelock), address(gbpCoin), gbpUsdPriceFeed, gbpUsdPriceFeedDecimals, config.GBP_USD_MAX_AGE()
+        );
 
         timelock.grantRole(timelock.PROPOSER_ROLE(), address(greatDAO));
         timelock.grantRole(timelock.EXECUTOR_ROLE(), address(0));

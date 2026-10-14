@@ -36,11 +36,23 @@ Great Coin (GRC) is the governance token of the GreatDAO. It provides voting pow
 
 - Vaults handle collateralization logic and the minting of GBPC.
 - Chainlink price feeds are used to calculate collateral value in GBPC.
+- Each price feed includes `maxAge`, measured in seconds. Borrowing and liquidation reject non-positive prices, missing or future timestamps, and updates older than that limit. Set the limit for the selected feed's heartbeat and expected update delay; the deployment helper uses 25 hours for GBP/USD and 2 hours for WETH/USD.
+- Deposits credit the collateral actually received. Incoming transfer fees reduce borrowing capacity. Collateral must have fixed balances and 6–18 decimals. Outgoing transfers must debit the vault and credit the recipient by exactly the quoted amount; recipient fees, additional vault-side fees, and rebasing are unsupported. Governance must verify this behavior before listing collateral; deployment cannot detect every token's transfer behavior. Feed decimals must match the configured value and cannot exceed 18.
+- Both price conversions retain 18-decimal price precision. Minimum collateral previews round up; payouts round down.
 
 ### Liquidation
 
 - Vaults have liquidation thresholds and close factors that determine borrowing capacity and liquidation scenarios.
 - A liquidator can pay a portion of the debt and receive collateral, including a liquidation spread.
+- The configured spread is a maximum bonus. For positions whose collateral still covers their debt, the bonus is capped at their surplus so liquidation does not make them insolvent. Safe risk parameters require `liquidationThreshold * (100 + liquidationSpread) < 10000`.
+- Positions at or below the health factor implied by that threshold and spread allow repayment of the full debt, overriding the normal close factor. Use `previewLiquidation(account, maxGbpcToRepay)` for the actual repayment and collateral payout; the older `previewLiquidate(amount)` is an uncapped estimate only.
+- The caller's repayment ceiling is capped at the allowed close factor and debt. Very small positions or unusually valuable indivisible token units can still have a payout below one collateral unit; such a liquidation reverts rather than paying an excessive bonus. The supported decimal range excludes whole-token collateral, but does not guarantee liquidation of every dust position. Governance must consider atomic-unit value and liquidation transaction costs when listing collateral.
+- A price gap can make collateral worth less than the debt before a liquidator acts. When liquidation consumes all collateral, remaining unpaid debt moves to the vault's `badDebt()` balance and emits `BadDebtRecorded`. Liquidation burns only the recoverable amount, up to the caller's maximum. Anyone can approve the vault and call `coverBadDebt(amount)` to burn their GBPC against this shortfall. The vault does not charge other depositors or draw on another vault's collateral.
+
+### Governance and deployment compatibility
+
+- These contracts are not upgradeable. The fixes require a new deployment and a separate migration plan for existing positions. `VaultMaster` construction and `deployVault` require a price-age limit; `USDPriceFeed` now contains `(feed, decimals, maxAge)`. Update proposal calldata to the new signatures.
+- Oracle validation follows the [Chainlink data-feed interface](https://docs.chain.link/data-feeds/api-reference).
 
 ## Usage
 

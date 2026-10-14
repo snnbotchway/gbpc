@@ -36,6 +36,8 @@ contract TestGreatVault is Test {
     address public gbpUsdPriceFeed;
     uint8 public gbpUsdPriceFeedDecimals;
 
+    uint32 public wEthPriceFeedMaxAge;
+
     uint8 public constant LIQUIDATION_THRESHOLD = 80;
     uint8 public constant LIQUIDATION_SPREAD = 10;
     uint8 public constant CLOSE_FACTOR = 50;
@@ -53,6 +55,7 @@ contract TestGreatVault is Test {
     function setUp() public {
         DeployGBPCSystem deployer = new DeployGBPCSystem();
         (greatDAO, timelock, vaultMaster, gbpCoin, greatCoin, config) = deployer.run();
+        wEthPriceFeedMaxAge = config.WETH_USD_MAX_AGE();
 
         address wEthAddress;
         (, gbpUsdPriceFeed, gbpUsdPriceFeedDecimals, wEthAddress, wEthUsdPriceFeed, wEthUsdPriceFeedDecimals) =
@@ -60,7 +63,13 @@ contract TestGreatVault is Test {
 
         vm.prank(address(timelock));
         vaultMaster.deployVault(
-            wEthAddress, wEthUsdPriceFeed, wEthUsdPriceFeedDecimals, LIQUIDATION_THRESHOLD, LIQUIDATION_SPREAD, CLOSE_FACTOR
+            wEthAddress,
+            wEthUsdPriceFeed,
+            wEthUsdPriceFeedDecimals,
+            wEthPriceFeedMaxAge,
+            LIQUIDATION_THRESHOLD,
+            LIQUIDATION_SPREAD,
+            CLOSE_FACTOR
         );
 
         greatVault = GreatVault(vaultMaster.collateralVault(wEthAddress));
@@ -310,13 +319,16 @@ contract TestGreatVault is Test {
         closeFactorAmount = maxMintableGbpc.mulDiv(CLOSE_FACTOR, ONE_HUNDRED_PERCENT);
     }
 
-    function testRevertsIfRepayAmountExceedsCloseFactor() public {
+    function testRepaymentCeilingIsCappedAtCloseFactor() public {
         uint256 closeFactorAmount = _breakHealthFactorOf(USER);
         uint256 gbpcToRepay = closeFactorAmount + 1;
+        uint256 initialDebt = greatVault.gbpcMinted(USER);
+        uint256 initialLiquidatorBalance = gbpCoin.balanceOf(LIQUIDATOR);
 
-        vm.expectRevert(abi.encodeWithSelector(GreatVault.GV__CloseFactorAmountExceeded.selector, closeFactorAmount));
         vm.prank(LIQUIDATOR);
         greatVault.liquidate(USER, gbpcToRepay);
+        assertEq(greatVault.gbpcMinted(USER), initialDebt - closeFactorAmount);
+        assertEq(gbpCoin.balanceOf(LIQUIDATOR), initialLiquidatorBalance - closeFactorAmount);
     }
 
     function testGbpcIsBurntFromLiquidatorToCoverSomeDebt(uint256 gbpcToRepay) public {

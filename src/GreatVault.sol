@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.21;
 
-import {AggregatorV3Interface} from "chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -10,17 +10,18 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {GBPCoin} from "./GBPCoin.sol";
 import {VaultMaster} from "./VaultMaster.sol";
 import {USDPriceFeed} from "./utils/Structs.sol";
+import {OracleLib} from "./utils/OracleLib.sol";
 
 /**
  * @title Great Vault - Named after The Great Britain.
  * @author Solomon Botchway
  * @notice This contract represents the Great Vault, which is responsible for minting and burning GBPC as needed.
- * @notice It is assumed that the total value of the underlying collateral of each vault will always be more than the GBPC minted.
+ * @notice Liquidation recovers collateral after price falls; unrecoverable debt is recorded separately.
  * @dev All Great Vaults deployed by the Vault Master are minters of the GBPC token, and are the only contracts that
  * can mint or burn GBPC.
  * @custom:security-contact Contact: solomonbotchway7@gmail.com
  */
-contract GreatVault is Ownable {
+contract GreatVault is Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20Metadata;
     using Math for uint256;
 
@@ -28,19 +29,23 @@ contract GreatVault is Ownable {
     error GV__InvalidAddress(address address_);
     error GV__HealthFactorBroken();
     error GV__HealthFactorNotBroken(uint256 healthFactor);
-    error GV__HealthFactorNotIncreased(uint256 initialHealthFactor, uint256 finalHealthFactor);
-    error GV__CloseFactorAmountExceeded(uint256 closeFactorAmount);
     error GV__PercentageCannotBeMoreThan100(uint8 percentage);
+    error GV__UnsupportedCollateralDecimals(uint8 decimals);
+    error GV__UnsupportedCollateralTransfer();
+    error GV__InvalidRiskParameters();
 
     USDPriceFeed private _collateralUsdPriceFeed;
     IERC20Metadata private immutable _collateral;
+    uint256 private immutable _collateralScale;
     VaultMaster private immutable _master;
     mapping(address account => uint256 balance) private _collateralBalances;
     mapping(address account => uint256 gbpcMinted) private _gbpcMinted;
+    uint256 private _badDebt;
 
     uint64 private constant MIN_HEALTH_FACTOR = 1e18;
     uint64 private constant PRECISION = 1e18;
     uint8 private constant ONE_HUNDRED_PERCENT = 100;
+    uint8 private constant MIN_COLLATERAL_DECIMALS = 6;
 
     uint8 private _liquidationSpread;
     uint8 private _liquidationThreshold;
@@ -57,6 +62,8 @@ contract GreatVault is Ownable {
     event LiquidationThresholdSet(uint8 newThreshold);
     event CloseFactorSet(uint8 newFactor);
     event CollateralUsdPriceFeedSet(USDPriceFeed newPriceFeed);
+    event BadDebtRecorded(address indexed account, uint256 amount);
+    event BadDebtCovered(address indexed by, uint256 amount);
 
     modifier nonZeroAmount(uint256 amount) {
         if (amount == 0) revert GV__InvalidAmount(amount);
@@ -77,8 +84,7 @@ contract GreatVault is Ownable {
      *
      * @param owner_ The Vault Owner, which will be the Great DAO's Timelock.
      * @param collateral_ Address of the ERC20 token to use as collateral for minting GBPC.
-     * @param usdPriceFeed_ Address of the Chainlink USD Pricefeed of the collateral.
-     * @param priceFeedDecimals_ Decimals of the Chainlink USD Pricefeed of the collateral.
+     * @param collateralUsdPriceFeed_ Collateral USD price feed, decimals, and maximum accepted age in seconds.
      * @param liquidationThreshold_ The percentage at which the collateral value is counted towards the borrowing capacity.
      * Borrowing Capacity(BC) refers to the total amount of GBPC that an account is allowed to mint, given its collateral amount.
      * BC = (GBP value of collateral * Liquidation Threshold) / 100.
@@ -89,15 +95,13 @@ contract GreatVault is Ownable {
     constructor(
         address owner_,
         address collateral_,
-        address usdPriceFeed_,
-        uint8 priceFeedDecimals_,
+        USDPriceFeed memory collateralUsdPriceFeed_,
         uint8 liquidationThreshold_,
         uint8 liquidationSpread_,
         uint8 closeFactor_
     )
         Ownable(owner_)
         nonZeroAddress(collateral_)
-        nonZeroAddress(usdPriceFeed_)
         nonZeroAmount(liquidationSpread_)
         nonZeroAmount(liquidationThreshold_)
         nonZeroAmount(closeFactor_)
@@ -105,9 +109,15 @@ contract GreatVault is Ownable {
         notMoreThan100(liquidationThreshold_)
         notMoreThan100(closeFactor_)
     {
+        _validateRiskParameters(liquidationThreshold_, liquidationSpread_);
         _master = VaultMaster(msg.sender);
         _collateral = IERC20Metadata(collateral_);
-        USDPriceFeed memory collateralUsdPriceFeed_ = USDPriceFeed({feed: usdPriceFeed_, decimals: priceFeedDecimals_});
+        uint8 collateralDecimals = _collateral.decimals();
+        if (collateralDecimals < MIN_COLLATERAL_DECIMALS || collateralDecimals > OracleLib.PRICE_DECIMALS) {
+            revert GV__UnsupportedCollateralDecimals(collateralDecimals);
+        }
+        _collateralScale = 10 ** (OracleLib.PRICE_DECIMALS - collateralDecimals);
+        OracleLib.validate(collateralUsdPriceFeed_);
         _collateralUsdPriceFeed = collateralUsdPriceFeed_;
 
         _liquidationSpread = liquidationSpread_;
@@ -122,15 +132,17 @@ contract GreatVault is Ownable {
 
     function depositCollateralAndMintGBPC(uint256 collateralAmount, uint256 gbpcAmount)
         external
+        nonReentrant
         nonZeroAmount(collateralAmount)
         nonZeroAmount(gbpcAmount)
     {
-        depositCollateral(collateralAmount);
-        mintGBPC(gbpcAmount);
+        _depositCollateral(collateralAmount);
+        _mintGBPC(gbpcAmount);
     }
 
     function burnGBPCandWithdrawCollateral(uint256 gbpcAmount, uint256 collateralAmount)
         external
+        nonReentrant
         nonZeroAmount(collateralAmount)
         nonZeroAmount(gbpcAmount)
     {
@@ -139,42 +151,51 @@ contract GreatVault is Ownable {
         _checkHealthFactor(msg.sender);
     }
 
-    function withdrawCollateral(uint256 amount) external nonZeroAmount(amount) {
+    function withdrawCollateral(uint256 amount) external nonReentrant nonZeroAmount(amount) {
         _withdrawCollateral(msg.sender, msg.sender, amount);
         _checkHealthFactor(msg.sender);
     }
 
-    function burnGBPC(uint256 amount) external nonZeroAmount(amount) {
+    function burnGBPC(uint256 amount) external nonReentrant nonZeroAmount(amount) {
         _burnGBPC(msg.sender, msg.sender, amount);
     }
 
-    function liquidate(address accountToLiquidate, uint256 gbpcToRepay)
+    /**
+     * @notice Repay up to maxGbpcToRepay for collateral. The bonus is capped by the surplus of a solvent position.
+     * Severely unhealthy positions allow full liquidation; insolvent positions cap repayment at recoverable collateral.
+     */
+    function liquidate(address accountToLiquidate, uint256 maxGbpcToRepay)
         external
+        nonReentrant
         nonZeroAddress(accountToLiquidate)
-        nonZeroAmount(gbpcToRepay)
+        nonZeroAmount(maxGbpcToRepay)
     {
-        uint256 initialHealthFactor = _healthFactor(accountToLiquidate);
-        if (initialHealthFactor >= MIN_HEALTH_FACTOR) revert GV__HealthFactorNotBroken(initialHealthFactor);
-
-        uint256 accountDebt = _gbpcMinted[accountToLiquidate];
-        uint256 closeFactorAmount = accountDebt.mulDiv(_closeFactor, ONE_HUNDRED_PERCENT);
-
-        if (gbpcToRepay > closeFactorAmount) revert GV__CloseFactorAmountExceeded(closeFactorAmount);
-
-        uint256 liquidatorCollateral = previewLiquidate(gbpcToRepay);
+        (uint256 gbpcToRepay, uint256 liquidatorCollateral) = previewLiquidation(accountToLiquidate, maxGbpcToRepay);
 
         emit Liquidated(accountToLiquidate, msg.sender, liquidatorCollateral, gbpcToRepay);
 
         _burnGBPC(accountToLiquidate, msg.sender, gbpcToRepay);
         _withdrawCollateral(accountToLiquidate, msg.sender, liquidatorCollateral);
 
-        uint256 finalHealthFactor = _healthFactor(accountToLiquidate);
-        if (!(finalHealthFactor > initialHealthFactor)) {
-            revert GV__HealthFactorNotIncreased(initialHealthFactor, finalHealthFactor);
+        if (_collateralBalances[accountToLiquidate] == 0) {
+            uint256 unpaidDebt = _gbpcMinted[accountToLiquidate];
+            if (unpaidDebt != 0) {
+                _gbpcMinted[accountToLiquidate] = 0;
+                _badDebt += unpaidDebt;
+                emit BadDebtRecorded(accountToLiquidate, unpaidDebt);
+            }
         }
     }
 
+    function coverBadDebt(uint256 amount) external nonReentrant nonZeroAmount(amount) {
+        if (amount > _badDebt) revert GV__InvalidAmount(amount);
+        _badDebt -= amount;
+        emit BadDebtCovered(msg.sender, amount);
+        gbpCoin().burnFrom(msg.sender, amount);
+    }
+
     function setLiquidationSpread(uint8 newSpread) external nonZeroAmount(newSpread) notMoreThan100(newSpread) onlyOwner {
+        _validateRiskParameters(_liquidationThreshold, newSpread);
         _liquidationSpread = newSpread;
         emit LiquidationSpreadSet(newSpread);
     }
@@ -185,6 +206,7 @@ contract GreatVault is Ownable {
         notMoreThan100(newThreshold)
         onlyOwner
     {
+        _validateRiskParameters(newThreshold, _liquidationSpread);
         _liquidationThreshold = newThreshold;
         emit LiquidationThresholdSet(newThreshold);
     }
@@ -199,19 +221,30 @@ contract GreatVault is Ownable {
         nonZeroAddress(newPriceFeed.feed)
         onlyOwner
     {
+        OracleLib.validate(newPriceFeed);
         _collateralUsdPriceFeed = newPriceFeed;
         emit CollateralUsdPriceFeedSet(newPriceFeed);
     }
 
-    function depositCollateral(uint256 amount) public nonZeroAmount(amount) {
-        _collateralBalances[msg.sender] += amount;
-
-        emit CollateralDeposited(msg.sender, amount);
-
-        _collateral.safeTransferFrom(msg.sender, address(this), amount);
+    function depositCollateral(uint256 amount) public nonReentrant nonZeroAmount(amount) {
+        _depositCollateral(amount);
     }
 
-    function mintGBPC(uint256 amount) public nonZeroAmount(amount) {
+    function _depositCollateral(uint256 amount) private {
+        uint256 previousBalance = _collateral.balanceOf(address(this));
+        _collateral.safeTransferFrom(msg.sender, address(this), amount);
+        uint256 received = _collateral.balanceOf(address(this)) - previousBalance;
+        if (received == 0) revert GV__InvalidAmount(received);
+        _collateralBalances[msg.sender] += received;
+
+        emit CollateralDeposited(msg.sender, received);
+    }
+
+    function mintGBPC(uint256 amount) public nonReentrant nonZeroAmount(amount) {
+        _mintGBPC(amount);
+    }
+
+    function _mintGBPC(uint256 amount) private {
         _gbpcMinted[msg.sender] += amount;
         _checkHealthFactor(msg.sender);
 
@@ -225,7 +258,13 @@ contract GreatVault is Ownable {
 
         emit CollateralWithdrawn(from, receiver, amount);
 
+        uint256 previousBalance = _collateral.balanceOf(address(this));
+        uint256 previousReceiverBalance = _collateral.balanceOf(receiver);
         _collateral.safeTransfer(receiver, amount);
+        if (
+            previousBalance - _collateral.balanceOf(address(this)) != amount
+                || _collateral.balanceOf(receiver) - previousReceiverBalance != amount
+        ) revert GV__UnsupportedCollateralTransfer();
     }
 
     function _burnGBPC(address debtor, address gbpcFrom, uint256 amount) private {
@@ -237,37 +276,19 @@ contract GreatVault is Ownable {
     }
 
     function _collateralToGbp(uint256 collateralValue) private view returns (uint256 gbpValue) {
-        USDPriceFeed memory collaUsdPriceFeed = _collateralUsdPriceFeed;
-        USDPriceFeed memory gbpUsdPriceFeed = _master.gbpUsdPriceFeed();
-        uint8 gbpcDecimals = gbpCoin().decimals();
-        uint8 collaDecimals = _collateral.decimals();
-
-        /// @custom:audit What to do if prices are stale?
-        (, int256 collaUsdAnswer,,,) = AggregatorV3Interface(collaUsdPriceFeed.feed).latestRoundData();
-        (, int256 gbpUsdAnswer,,,) = AggregatorV3Interface(gbpUsdPriceFeed.feed).latestRoundData();
-
-        uint256 collateralUsdPrice = _syncDecimals(uint256(collaUsdAnswer), collaUsdPriceFeed.decimals, gbpcDecimals);
-        uint256 gbpUsdPrice = _syncDecimals(uint256(gbpUsdAnswer), gbpUsdPriceFeed.decimals, gbpcDecimals);
-
-        gbpValue = collateralUsdPrice.mulDiv(collateralValue, gbpUsdPrice);
-        gbpValue = _syncDecimals(gbpValue, collaDecimals, gbpcDecimals);
+        uint256 collateralUsdPrice = OracleLib.price(_collateralUsdPriceFeed);
+        uint256 gbpUsdPrice = OracleLib.price(_master.gbpUsdPriceFeed());
+        gbpValue = (collateralValue * _collateralScale).mulDiv(collateralUsdPrice, gbpUsdPrice);
     }
 
     function _gbpToCollateral(uint256 gbpValue) private view returns (uint256 collateralValue) {
-        USDPriceFeed memory collaUsdPriceFeed = _collateralUsdPriceFeed;
-        USDPriceFeed memory gbpUsdPriceFeed = _master.gbpUsdPriceFeed();
-        uint8 gbpcDecimals = gbpCoin().decimals();
-        uint8 collaDecimals = _collateral.decimals();
+        return _gbpToCollateral(gbpValue, Math.Rounding.Floor);
+    }
 
-        /// @custom:audit What to do if prices are stale?
-        (, int256 collaUsdAnswer,,,) = AggregatorV3Interface(collaUsdPriceFeed.feed).latestRoundData();
-        (, int256 gbpUsdAnswer,,,) = AggregatorV3Interface(gbpUsdPriceFeed.feed).latestRoundData();
-
-        uint256 collateralUsdPrice = _syncDecimals(uint256(collaUsdAnswer), collaUsdPriceFeed.decimals, collaDecimals);
-        uint256 gbpUsdPrice = _syncDecimals(uint256(gbpUsdAnswer), gbpUsdPriceFeed.decimals, collaDecimals);
-
-        collateralValue = gbpUsdPrice.mulDiv(gbpValue, collateralUsdPrice);
-        collateralValue = _syncDecimals(collateralValue, gbpcDecimals, collaDecimals);
+    function _gbpToCollateral(uint256 gbpValue, Math.Rounding rounding) private view returns (uint256 collateralValue) {
+        uint256 collateralUsdPrice = OracleLib.price(_collateralUsdPriceFeed);
+        uint256 gbpUsdPrice = OracleLib.price(_master.gbpUsdPriceFeed());
+        collateralValue = gbpValue.mulDiv(gbpUsdPrice, collateralUsdPrice * _collateralScale, rounding);
     }
 
     function _borrowingCapacity(address account) private view returns (uint256 maxBorrow) {
@@ -279,16 +300,16 @@ contract GreatVault is Ownable {
         if (_healthFactor(account) < MIN_HEALTH_FACTOR) revert GV__HealthFactorBroken();
     }
 
+    function _validateRiskParameters(uint8 threshold, uint8 spread) private pure {
+        if (uint256(threshold) * (ONE_HUNDRED_PERCENT + spread) >= uint256(ONE_HUNDRED_PERCENT) ** 2) {
+            revert GV__InvalidRiskParameters();
+        }
+    }
+
     function _healthFactor(address account) private view returns (uint256 healthFactor_) {
         uint256 debt = _gbpcMinted[account];
         if (debt == 0) return type(uint256).max;
         healthFactor_ = _borrowingCapacity(account).mulDiv(PRECISION, debt);
-    }
-
-    function _syncDecimals(uint256 value, uint8 fromDecimals, uint8 toDecimals) private pure returns (uint256) {
-        if (fromDecimals > toDecimals) return value / 10 ** (fromDecimals - toDecimals);
-        if (fromDecimals < toDecimals) return value * 10 ** (toDecimals - fromDecimals);
-        return value;
     }
 
     function previewDepositCollateral(uint256 collateralAmount) external view returns (uint256 maxMintableGbpc) {
@@ -297,8 +318,8 @@ contract GreatVault is Ownable {
     }
 
     function previewMintGBPC(uint256 gbpcAmount) external view returns (uint256 minCollateralDeposit) {
-        uint256 collateralGbpValue = gbpcAmount.mulDiv(ONE_HUNDRED_PERCENT, _liquidationThreshold);
-        minCollateralDeposit = _gbpToCollateral(collateralGbpValue) + 1;
+        uint256 collateralGbpValue = gbpcAmount.mulDiv(ONE_HUNDRED_PERCENT, _liquidationThreshold, Math.Rounding.Ceil);
+        minCollateralDeposit = _gbpToCollateral(collateralGbpValue, Math.Rounding.Ceil);
     }
 
     function liquidationSpread() external view returns (uint8) {
@@ -319,6 +340,10 @@ contract GreatVault is Ownable {
 
     function gbpcMinted(address account) external view returns (uint256) {
         return _gbpcMinted[account];
+    }
+
+    function badDebt() external view returns (uint256) {
+        return _badDebt;
     }
 
     function collateral() external view returns (address) {
@@ -352,6 +377,42 @@ contract GreatVault is Ownable {
     function previewLiquidate(uint256 gbpcToRepay) public view returns (uint256) {
         uint256 gbpValueOfCollaToClaim = gbpcToRepay.mulDiv(ONE_HUNDRED_PERCENT + _liquidationSpread, ONE_HUNDRED_PERCENT);
         return _gbpToCollateral(gbpValueOfCollaToClaim);
+    }
+
+    /**
+     * @notice Account-specific repayment and payout, including bonus and collateral caps.
+     */
+    function previewLiquidation(address account, uint256 maxGbpcToRepay)
+        public
+        view
+        nonZeroAddress(account)
+        nonZeroAmount(maxGbpcToRepay)
+        returns (uint256 gbpcToRepay, uint256 collateralToReceive)
+    {
+        uint256 debt = _gbpcMinted[account];
+        if (debt == 0) revert GV__HealthFactorNotBroken(type(uint256).max);
+        uint256 collateralGbpValue = _collateralToGbp(_collateralBalances[account]);
+        uint256 health = collateralGbpValue.mulDiv(_liquidationThreshold, ONE_HUNDRED_PERCENT).mulDiv(PRECISION, debt);
+        if (health >= MIN_HEALTH_FACTOR) revert GV__HealthFactorNotBroken(health);
+
+        uint256 criticalHealth = uint256(_liquidationThreshold) * (ONE_HUNDRED_PERCENT + _liquidationSpread) * PRECISION
+            / uint256(ONE_HUNDRED_PERCENT) ** 2;
+        uint256 closeFactorAmount = health <= criticalHealth ? debt : debt.mulDiv(_closeFactor, ONE_HUNDRED_PERCENT);
+        gbpcToRepay = Math.min(maxGbpcToRepay, closeFactorAmount);
+        if (collateralGbpValue < debt) {
+            uint256 recoverableDebt =
+                collateralGbpValue.mulDiv(ONE_HUNDRED_PERCENT, ONE_HUNDRED_PERCENT + _liquidationSpread);
+            if (gbpcToRepay >= recoverableDebt) {
+                return (recoverableDebt, _collateralBalances[account]);
+            }
+        }
+
+        uint256 bonus = gbpcToRepay.mulDiv(_liquidationSpread, ONE_HUNDRED_PERCENT);
+        if (collateralGbpValue >= debt) {
+            bonus = Math.min(bonus, gbpcToRepay.mulDiv(collateralGbpValue - debt, debt));
+        }
+        collateralToReceive = _gbpToCollateral(gbpcToRepay + bonus);
+        if (collateralToReceive == 0) revert GV__InvalidAmount(collateralToReceive);
     }
 
     function gbpCoin() public view returns (GBPCoin) {

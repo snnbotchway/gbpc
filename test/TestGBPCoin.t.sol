@@ -24,6 +24,8 @@ contract TestGBPCoin is Test {
     HelperConfig public config;
     DeployGBPCSystem public deployer;
 
+    uint32 public wEthPriceFeedMaxAge;
+
     uint8 public constant LIQUIDATION_THRESHOLD = 80;
     uint8 public constant LIQUIDATION_SPREAD = 10;
     uint8 public constant CLOSE_FACTOR = 50;
@@ -31,12 +33,19 @@ contract TestGBPCoin is Test {
     function setUp() public {
         deployer = new DeployGBPCSystem();
         (greatDAO, timelock, vaultMaster, gbpCoin, greatCoin, config) = deployer.run();
+        wEthPriceFeedMaxAge = config.WETH_USD_MAX_AGE();
 
         (,,, address wEth, address wEthUsdPriceFeed, uint8 wEthUsdPriceFeedDecimals) = config.activeNetworkConfig();
 
         vm.prank(address(timelock));
         vaultMaster.deployVault(
-            wEth, wEthUsdPriceFeed, wEthUsdPriceFeedDecimals, LIQUIDATION_THRESHOLD, LIQUIDATION_SPREAD, CLOSE_FACTOR
+            wEth,
+            wEthUsdPriceFeed,
+            wEthUsdPriceFeedDecimals,
+            wEthPriceFeedMaxAge,
+            LIQUIDATION_THRESHOLD,
+            LIQUIDATION_SPREAD,
+            CLOSE_FACTOR
         );
 
         greatVault = GreatVault(vaultMaster.collateralVault(wEth));

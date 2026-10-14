@@ -19,6 +19,8 @@ contract HelperConfig is Script {
 
     int256 public constant GBP_USD_PRICE = 1_21560000;
     int256 public constant WETH_USD_PRICE = 1607_84000000;
+    uint32 public constant GBP_USD_MAX_AGE = 25 hours;
+    uint32 public constant WETH_USD_MAX_AGE = 2 hours;
 
     uint256 private constant DEFAULT_ANVIL_KEY = 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80;
 

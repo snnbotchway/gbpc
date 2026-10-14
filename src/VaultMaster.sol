@@ -8,6 +8,7 @@ import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IER
 import {GBPCoin} from "./GBPCoin.sol";
 import {GreatVault} from "./GreatVault.sol";
 import {USDPriceFeed} from "./utils/Structs.sol";
+import {OracleLib} from "./utils/OracleLib.sol";
 
 /**
  * @title Vault Master
@@ -37,13 +38,20 @@ contract VaultMaster is Ownable {
      * @param gbpCoin_ Address of the GBPC stablecoin.
      * @param gbpUsdPriceFeed_ GBP Chainlink USD price feed address.
      * @param gbpUsdPriceFeedDecimals_ GBP Chainlink USD price feed decimals.
+     * @param gbpUsdPriceFeedMaxAge_ Maximum accepted GBP price age, in seconds.
      */
-    constructor(address greatTimeLock_, address gbpCoin_, address gbpUsdPriceFeed_, uint8 gbpUsdPriceFeedDecimals_)
-        Ownable(greatTimeLock_)
-        nonZeroAddress(greatTimeLock_)
-    {
+    constructor(
+        address greatTimeLock_,
+        address gbpCoin_,
+        address gbpUsdPriceFeed_,
+        uint8 gbpUsdPriceFeedDecimals_,
+        uint32 gbpUsdPriceFeedMaxAge_
+    ) Ownable(greatTimeLock_) nonZeroAddress(greatTimeLock_) {
         _gbpCoin = GBPCoin(gbpCoin_);
-        _gbpUsdPriceFeed = USDPriceFeed({feed: gbpUsdPriceFeed_, decimals: gbpUsdPriceFeedDecimals_});
+        USDPriceFeed memory priceFeed =
+            USDPriceFeed({feed: gbpUsdPriceFeed_, decimals: gbpUsdPriceFeedDecimals_, maxAge: gbpUsdPriceFeedMaxAge_});
+        OracleLib.validate(priceFeed);
+        _gbpUsdPriceFeed = priceFeed;
     }
 
     /**
@@ -52,6 +60,7 @@ contract VaultMaster is Ownable {
      * @param collateral Address of the ERC20 token to use as collateral for minting GBPC.
      * @param usdPriceFeed Address of the Chainlink USD Pricefeed of the collateral.
      * @param priceFeedDecimals Decimals of the Chainlink USD Pricefeed of the collateral.
+     * @param priceFeedMaxAge Maximum accepted collateral price age, in seconds.
      * @param liquidationThreshold The percentage at which the collateral value is counted towards the borrowing capacity.
      * Borrowing Capacity(BC) refers to the total amount of GBPC that an account is allowed to mint, given its collateral amount.
      * BC = (GBP value of collateral * Liquidation Threshold) / 100.
@@ -63,6 +72,7 @@ contract VaultMaster is Ownable {
         address collateral,
         address usdPriceFeed,
         uint8 priceFeedDecimals,
+        uint32 priceFeedMaxAge,
         uint8 liquidationThreshold,
         uint8 liquidationSpread,
         uint8 closeFactor
@@ -71,12 +81,11 @@ contract VaultMaster is Ownable {
 
         address vaultOwner = owner(); // The DAO's timelock will own the vault as well.
         GreatVault vault = new GreatVault(
-            vaultOwner, 
-            collateral, 
-            usdPriceFeed, 
-            priceFeedDecimals, 
-            liquidationThreshold, 
-            liquidationSpread, 
+            vaultOwner,
+            collateral,
+            USDPriceFeed({feed: usdPriceFeed, decimals: priceFeedDecimals, maxAge: priceFeedMaxAge}),
+            liquidationThreshold,
+            liquidationSpread,
             closeFactor
         );
         _vaults[collateral] = address(vault);
@@ -89,6 +98,7 @@ contract VaultMaster is Ownable {
     }
 
     function setGbpUsdPriceFeed(USDPriceFeed calldata newPriceFeed) external onlyOwner {
+        OracleLib.validate(newPriceFeed);
         _gbpUsdPriceFeed = newPriceFeed;
         emit GbpUsdPriceFeedSet(newPriceFeed);
     }

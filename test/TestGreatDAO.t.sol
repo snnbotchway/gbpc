@@ -58,10 +58,11 @@ contract TestGreatDAO is Test {
     function testDeployVaultGovernance() public {
         string memory description = "Deploy WETH collateral vault.";
         bytes memory deployVaultCalldata = abi.encodeWithSignature(
-            "deployVault(address,address,uint8,uint8,uint8,uint8)",
+            "deployVault(address,address,uint8,uint32,uint8,uint8,uint8)",
             wEth,
             wEthUsdPriceFeed,
             wEthUsdPriceFeedDecimals,
+            config.WETH_USD_MAX_AGE(),
             LIQUIDATION_THRESHOLD,
             LIQUIDATION_SPREAD,
             CLOSE_FACTOR
@@ -105,4 +106,5 @@ contract TestGreatDAO is Test {
         assertEq(GreatVault(finalVault).owner(), address(timelock));
         assertTrue(gbpCoin.hasRole(gbpCoin.MINTER_ROLE(), finalVault));
     }
+
 }

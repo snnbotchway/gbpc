@@ -4,4 +4,5 @@ pragma solidity 0.8.21;
 struct USDPriceFeed {
     address feed;
     uint8 decimals;
+    uint32 maxAge;
 }
